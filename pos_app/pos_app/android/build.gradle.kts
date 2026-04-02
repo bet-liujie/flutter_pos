@@ -1,5 +1,10 @@
 allprojects {
     repositories {
+        maven { url = uri("https://storage.flutter-io.cn/download.flutter.io") }
+        
+        // 👇 2. 阿里云的常规镜像（加速其他常规依赖）
+        maven { url = uri("https://maven.aliyun.com/repository/public") }
+        maven { url = uri("https://maven.aliyun.com/repository/google") }
         google()
         mavenCentral()
     }

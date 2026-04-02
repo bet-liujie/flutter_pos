@@ -44,7 +44,12 @@ class _ProductPageState extends State<ProductPage> {
   // API 基础地址
   final String apiBase = 'http://192.168.43.251:8080/products';
   // Dio 实例用于网络请求
-  final dio = Dio();
+  final dio = Dio(
+    BaseOptions(
+      connectTimeout: const Duration(seconds: 5), // 连接超时限制
+      receiveTimeout: const Duration(seconds: 5), // 接收超时限制
+    ),
+  );
 
   // 所有商品数据
   List<Map<String, dynamic>> _allProducts = [];
@@ -79,6 +84,7 @@ class _ProductPageState extends State<ProductPage> {
         });
       }
     } catch (e) {
+      print('=== API 请求报错 ===: $e');
       _showSnackBar('网络连接失败，请检查后端服务', isError: true);
     } finally {
       setState(() => _isLoading = false);
