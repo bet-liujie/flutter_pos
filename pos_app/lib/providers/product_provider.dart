@@ -8,6 +8,7 @@ class ProductProvider extends ChangeNotifier {
   List<Map<String, dynamic>> _allProducts = [];
   List<Map<String, dynamic>> filteredProducts = [];
   bool isLoading = false;
+  String? errorMessage;
   String _searchQuery = '';
   Timer? _timer;
 
@@ -56,10 +57,12 @@ class ProductProvider extends ChangeNotifier {
       final newData = await _api.getProducts();
       // 这里可以对比一下新老数据，如果没变就不跑 runFilter 了（可选优化）
       _allProducts = newData;
+      errorMessage = null;
       runFilter(_searchQuery); // runFilter 内部会执行 notifyListeners()
       print('✅ 数据已同步，当前商品数：${_allProducts.length}');
     } catch (e) {
       print('❌ 定时刷新失败: $e');
+      errorMessage = '数据加载失败，请检查网络';
     } finally {
       if (showLoading) {
         isLoading = false;

@@ -141,12 +141,46 @@ class ProductPage extends StatelessWidget {
         label: const Text('添加商品'),
       ),
       // 2. 只在需要变动的列表区域使用 Consumer
+      // 2. 只在需要变动的列表区域使用 Consumer
       body: Consumer<ProductProvider>(
         builder: (context, pro, child) {
+          // 状态 1：正在首次加载中
           if (pro.isLoading && pro.filteredProducts.isEmpty) {
             return const Center(child: CircularProgressIndicator());
           }
 
+          // 状态 2：💥 拦截并展示网络错误！
+          // 如果 provider 里存了错误信息，且当前屏幕上没有数据，就显示断网插画
+          if (pro.errorMessage != null && pro.filteredProducts.isEmpty) {
+            return Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(
+                    Icons.wifi_off_rounded,
+                    size: 80,
+                    color: Colors.redAccent,
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    pro.errorMessage!, // 加上感叹号，表示我们确定它此时不为空
+                    style: const TextStyle(
+                      color: Colors.redAccent,
+                      fontSize: 16,
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  FilledButton.icon(
+                    onPressed: () => pro.fetchProducts(showLoading: true),
+                    icon: const Icon(Icons.refresh),
+                    label: const Text('重新连接'),
+                  ),
+                ],
+              ),
+            );
+          }
+
+          // 状态 3：正常渲染商品列表（包含完全搜索不到时的空状态）
           return RefreshIndicator(
             onRefresh: () => pro.fetchProducts(showLoading: true),
             child: pro.filteredProducts.isEmpty
@@ -160,7 +194,6 @@ class ProductPage extends StatelessWidget {
                     ),
                     itemCount: pro.filteredProducts.length,
                     itemBuilder: (context, index) {
-                      // 传递 onEdit 回调，让卡片能唤起页面的编辑弹窗
                       return ProductCard(
                         product: pro.filteredProducts[index],
                         onEdit: (p) => _showProductForm(context, p),
