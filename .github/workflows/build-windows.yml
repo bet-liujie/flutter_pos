@@ -1,60 +1,42 @@
-name: Build Windows POS System
+name: Build Windows POS Client
 
-# 触发条件：当你手动点击或者推送到主分支时触发
 on:
   push:
     branches: ["main", "master"]
   workflow_dispatch:
 
 jobs:
-  build-windows:
-    # 召唤一台免费的最新版 Windows 云电脑
+  build-client:
     runs-on: windows-latest
 
     steps:
-      # 1. 拉取你的最新代码
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 2. 安装 Flutter 和 Dart 环境
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
           channel: "stable"
           cache: true
 
-      # 3. 启用 Windows 桌面支持
       - name: Enable Windows Desktop
         run: flutter config --enable-windows-desktop
 
-      # 4. 打包前端 (pos_app)
       - name: Build Flutter Client
         run: |
           cd pos_app
           flutter pub get
           flutter build windows
 
-      # 5. 安装 Dart Frog CLI 并打包后端 (pos_service)
-      - name: Build Dart Frog Backend
-        run: |
-          dart pub global activate dart_frog_cli
-          cd pos_service
-          dart_frog build
-          dart compile exe build/bin/server.dart -o pos_backend.exe
-
-      # 6. 将打包好的文件整理到一个文件夹准备上传
+      # 只整理前端发布文件夹
       - name: Prepare Release Folder
         run: |
-          mkdir POS_Release
-          # 复制前端编译产物 (包含 exe, dll, data文件夹)
-          xcopy pos_app\build\windows\x64\runner\Release\* POS_Release\Client\ /E /H /C /I
-          # 复制后端 exe
-          mkdir POS_Release\Server
-          copy pos_service\pos_backend.exe POS_Release\Server\
+          mkdir POS_Client_Release
+          xcopy pos_app\build\windows\x64\runner\Release\* POS_Client_Release\ /E /H /C /I
 
-      # 7. 上传产物供你下载！
+      # 上传产物
       - name: Upload Windows Build Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Windows-POS-System
-          path: POS_Release/
+          name: Windows-POS-Client
+          path: POS_Client_Release/
