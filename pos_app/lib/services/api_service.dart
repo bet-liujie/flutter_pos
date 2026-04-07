@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart';
+import 'package:image_picker/image_picker.dart';
 
 class ApiService {
   // 你的服务器局域网地址
@@ -26,17 +27,52 @@ class ApiService {
   }
 
   /// 2. 新增商品 (POST)
-  Future<void> addProduct(String name, double price) async {
-    await dio.post('/products', data: {'name': name, 'price': price});
+  Future<void> addProduct(
+    String name,
+    double price,
+    String desc,
+    bool isActive,
+    XFile? image,
+  ) async {
+    FormData formData = FormData.fromMap({
+      'name': name,
+      'price': price,
+      'description': desc,
+      'is_active': isActive,
+      if (image != null)
+        'image': await MultipartFile.fromFile(image.path, filename: image.name),
+    });
+    await dio.post('/products', data: formData);
   }
 
   /// 3. 更新商品 (PUT)
-  Future<void> updateProduct(int id, String name, double price) async {
-    await dio.put('/products', data: {'id': id, 'name': name, 'price': price});
+  Future<void> updateProduct(
+    int id,
+    String name,
+    double price,
+    String desc,
+    bool isActive,
+    XFile? image,
+  ) async {
+    FormData formData = FormData.fromMap({
+      'id': id,
+      'name': name,
+      'price': price,
+      'description': desc,
+      'is_active': isActive,
+      if (image != null)
+        'image': await MultipartFile.fromFile(image.path, filename: image.name),
+    });
+    await dio.put('/products', data: formData);
   }
 
   /// 4. 删除商品 (DELETE)
   Future<void> deleteProduct(int id) async {
     await dio.delete('/products', queryParameters: {'id': id});
+  }
+
+  // 新增：快捷切换上下架状态 (PATCH 请求)
+  Future<void> toggleStatus(int id, bool isActive) async {
+    await dio.patch('/products/$id/status', data: {'is_active': isActive});
   }
 }

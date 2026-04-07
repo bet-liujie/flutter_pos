@@ -1,100 +1,221 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:image_picker/image_picker.dart';
 import '../providers/product_provider.dart';
 
-class ProductPage extends StatelessWidget {
+class ProductPage extends StatefulWidget {
   const ProductPage({super.key});
 
-  // 这里的弹出表单逻辑和之前一样，只是提交时调用 provider
+  @override
+  State<ProductPage> createState() => _ProductPageState();
+}
+
+class _ProductPageState extends State<ProductPage> {
+  // 💥 改造后的表单弹窗
   void _showProductForm(
     BuildContext context, [
     Map<String, dynamic>? existingProduct,
   ]) {
+    final isEditing = existingProduct != null;
     final nameCtrl = TextEditingController(text: existingProduct?['name']);
     final priceCtrl = TextEditingController(
       text: existingProduct?['price']?.toString(),
     );
-    final isEditing = existingProduct != null;
+    final descCtrl = TextEditingController(
+      text: existingProduct?['description'],
+    );
+
+    // 默认新商品是上架状态 (true)
+    bool isActive = existingProduct?['is_active'] ?? true;
+    XFile? selectedImage;
+    final ImagePicker picker = ImagePicker();
 
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
+      backgroundColor: Colors.white,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (ctx) => Padding(
-        padding: EdgeInsets.only(
-          bottom: MediaQuery.of(ctx).viewInsets.bottom,
-          left: 20,
-          right: 20,
-          top: 20,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              isEditing ? '编辑商品' : '新增商品',
-              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+      builder: (ctx) => StatefulBuilder(
+        // 使用 StatefulBuilder 让弹窗内部可以独立刷新状态（比如选中图片后）
+        builder: (BuildContext context, StateSetter setModalState) {
+          return Padding(
+            padding: EdgeInsets.only(
+              bottom: MediaQuery.of(ctx).viewInsets.bottom,
+              left: 20,
+              right: 20,
+              top: 20,
             ),
-            const SizedBox(height: 20),
-            TextField(
-              controller: nameCtrl,
-              decoration: const InputDecoration(
-                labelText: '商品名称',
-                prefixIcon: Icon(Icons.shopping_bag_outlined),
-                border: OutlineInputBorder(),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        isEditing ? '编辑商品' : '新增商品',
+                        style: const TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      Row(
+                        children: [
+                          Text(
+                            isActive ? '售卖中' : '已下架',
+                            style: TextStyle(
+                              color: isActive ? Colors.green : Colors.grey,
+                            ),
+                          ),
+                          Switch(
+                            value: isActive,
+                            activeColor: Colors.green,
+                            onChanged: (val) =>
+                                setModalState(() => isActive = val),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 20),
+
+                  // 图片上传区域
+                  Center(
+                    child: GestureDetector(
+                      onTap: () async {
+                        final XFile? image = await picker.pickImage(
+                          source: ImageSource.gallery,
+                        );
+                        if (image != null)
+                          setModalState(() => selectedImage = image);
+                      },
+                      child: Container(
+                        width: 100,
+                        height: 100,
+                        decoration: BoxDecoration(
+                          color: Colors.grey[100],
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: Colors.grey.shade300,
+                            style: BorderStyle.solid,
+                          ),
+                          image: selectedImage != null
+                              ? DecorationImage(
+                                  image: FileImage(File(selectedImage!.path)),
+                                  fit: BoxFit.cover,
+                                )
+                              : (isEditing &&
+                                    existingProduct['image_url'] != null)
+                              ? DecorationImage(
+                                  image: NetworkImage(
+                                    existingProduct['image_url'],
+                                  ),
+                                  fit: BoxFit.cover,
+                                )
+                              : null,
+                        ),
+                        child:
+                            (selectedImage == null &&
+                                (existingProduct?['image_url'] == null))
+                            ? const Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(Icons.add_a_photo, color: Colors.grey),
+                                  SizedBox(height: 4),
+                                  Text(
+                                    '上传图片',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: Colors.grey,
+                                    ),
+                                  ),
+                                ],
+                              )
+                            : null,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+
+                  TextField(
+                    controller: nameCtrl,
+                    decoration: const InputDecoration(
+                      labelText: '商品名称*',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: priceCtrl,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    decoration: const InputDecoration(
+                      labelText: '商品价格*',
+                      prefixIcon: Icon(Icons.attach_money),
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: descCtrl,
+                    maxLines: 3,
+                    decoration: const InputDecoration(
+                      labelText: '商品详情描述',
+                      hintText: '例如：选用新鲜食材，纯手工制作...',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 50,
+                    child: FilledButton(
+                      style: FilledButton.styleFrom(
+                        backgroundColor: Colors.orangeAccent.shade700,
+                      ),
+                      onPressed: () {
+                        final name = nameCtrl.text.trim();
+                        final price = double.tryParse(priceCtrl.text.trim());
+                        if (name.isNotEmpty && price != null) {
+                          Navigator.pop(ctx);
+                          context.read<ProductProvider>().saveProduct(
+                            name,
+                            price,
+                            descCtrl.text.trim(),
+                            isActive,
+                            selectedImage,
+                            id: existingProduct?['id'],
+                            context: context,
+                          );
+                        }
+                      },
+                      child: Text(isEditing ? '保存修改' : '确认上架'),
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                ],
               ),
             ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: priceCtrl,
-              keyboardType: const TextInputType.numberWithOptions(
-                decimal: true,
-              ),
-              decoration: const InputDecoration(
-                labelText: '商品价格',
-                prefixIcon: Icon(Icons.attach_money),
-                border: OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: 24),
-            SizedBox(
-              width: double.infinity,
-              height: 50,
-              child: FilledButton(
-                onPressed: () {
-                  final name = nameCtrl.text.trim();
-                  final price = double.tryParse(priceCtrl.text.trim());
-                  if (name.isNotEmpty && price != null) {
-                    Navigator.pop(ctx);
-                    context.read<ProductProvider>().saveProduct(
-                      name,
-                      price,
-                      id: existingProduct?['id'],
-                      context: context,
-                    );
-                  }
-                },
-                child: Text(isEditing ? '保存修改' : '确认添加'),
-              ),
-            ),
-            const SizedBox(height: 20),
-          ],
-        ),
+          );
+        },
       ),
     );
   }
 
-  // 👇 补充缺失的空状态视图
   Widget _buildEmptyState() {
     return ListView(
       children: const [
         SizedBox(height: 100),
-        Icon(Icons.inbox_outlined, size: 80, color: Colors.grey),
+        Icon(Icons.fastfood_outlined, size: 80, color: Colors.grey),
         SizedBox(height: 16),
         Center(
           child: Text(
-            '没有找到相关商品',
+            '暂无商品，快去添加吧',
             style: TextStyle(color: Colors.grey, fontSize: 16),
           ),
         ),
@@ -104,16 +225,17 @@ class ProductPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // 1. 使用 read，这样 provider 更新时，整个 Scaffold 不会重绘
     final provider = context.read<ProductProvider>();
 
     return Scaffold(
-      backgroundColor: Colors.grey[50],
+      backgroundColor: Colors.grey[100],
       appBar: AppBar(
-        title: const Text('商品库', style: TextStyle(fontWeight: FontWeight.bold)),
+        title: const Text(
+          '商品管理',
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
         backgroundColor: Colors.white,
         surfaceTintColor: Colors.transparent,
-        // 👇 把搜索框补回来，它不需要放进 Consumer，因为它只是触发动作
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(70),
           child: Padding(
@@ -121,12 +243,12 @@ class ProductPage extends StatelessWidget {
             child: TextField(
               onChanged: provider.runFilter,
               decoration: InputDecoration(
-                hintText: '搜索商品名称...',
+                hintText: '搜索商品...',
                 prefixIcon: const Icon(Icons.search),
                 filled: true,
                 fillColor: Colors.grey[100],
                 border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(30),
+                  borderRadius: BorderRadius.circular(12),
                   borderSide: BorderSide.none,
                 ),
                 contentPadding: const EdgeInsets.symmetric(vertical: 0),
@@ -137,20 +259,16 @@ class ProductPage extends StatelessWidget {
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => _showProductForm(context),
+        backgroundColor: Colors.orangeAccent.shade700,
+        foregroundColor: Colors.white,
         icon: const Icon(Icons.add),
-        label: const Text('添加商品'),
+        label: const Text('新增商品'),
       ),
-      // 2. 只在需要变动的列表区域使用 Consumer
-      // 2. 只在需要变动的列表区域使用 Consumer
       body: Consumer<ProductProvider>(
         builder: (context, pro, child) {
-          // 状态 1：正在首次加载中
           if (pro.isLoading && pro.filteredProducts.isEmpty) {
             return const Center(child: CircularProgressIndicator());
           }
-
-          // 状态 2：💥 拦截并展示网络错误！
-          // 如果 provider 里存了错误信息，且当前屏幕上没有数据，就显示断网插画
           if (pro.errorMessage != null && pro.filteredProducts.isEmpty) {
             return Center(
               child: Column(
@@ -163,7 +281,7 @@ class ProductPage extends StatelessWidget {
                   ),
                   const SizedBox(height: 16),
                   Text(
-                    pro.errorMessage!, // 加上感叹号，表示我们确定它此时不为空
+                    pro.errorMessage!,
                     style: const TextStyle(
                       color: Colors.redAccent,
                       fontSize: 16,
@@ -180,21 +298,20 @@ class ProductPage extends StatelessWidget {
             );
           }
 
-          // 状态 3：正常渲染商品列表（包含完全搜索不到时的空状态）
           return RefreshIndicator(
             onRefresh: () => pro.fetchProducts(showLoading: true),
             child: pro.filteredProducts.isEmpty
                 ? _buildEmptyState()
                 : ListView.builder(
-                    itemExtent: 90, // 提升 POS 机滑动性能
                     padding: const EdgeInsets.only(
-                      left: 16,
-                      right: 16,
+                      left: 12,
+                      right: 12,
+                      top: 12,
                       bottom: 80,
                     ),
                     itemCount: pro.filteredProducts.length,
                     itemBuilder: (context, index) {
-                      return ProductCard(
+                      return ProductCardMeituan(
                         product: pro.filteredProducts[index],
                         onEdit: (p) => _showProductForm(context, p),
                       );
@@ -207,85 +324,196 @@ class ProductPage extends StatelessWidget {
   }
 }
 
-// ==========================================
-// 👇 补充缺失的独立卡片组件（放在同一个文件最底下即可）
-// ==========================================
-class ProductCard extends StatelessWidget {
+// 💥 美团风商品卡片
+class ProductCardMeituan extends StatelessWidget {
   final Map<String, dynamic> product;
-  final Function(Map<String, dynamic>) onEdit; // 用于接收编辑事件
+  final Function(Map<String, dynamic>) onEdit;
 
-  const ProductCard({super.key, required this.product, required this.onEdit});
+  const ProductCardMeituan({
+    super.key,
+    required this.product,
+    required this.onEdit,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      elevation: 0, // 去掉阴影减轻 GPU 负担
-      margin: const EdgeInsets.symmetric(vertical: 6),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-        side: BorderSide(color: Colors.grey.shade200),
+    // 解析状态，处理旧数据可能没有 is_active 字段的情况
+    final bool isActive = product['is_active'] ?? true;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.02),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
-      child: ListTile(
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        leading: Container(
-          width: 50,
-          height: 50,
-          decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.primaryContainer,
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Icon(
-            Icons.coffee,
-            color: Theme.of(context).colorScheme.onPrimaryContainer,
-          ),
-        ),
-        title: Text(
-          product['name'] ?? '未知商品',
-          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-        ),
-        subtitle: Padding(
-          padding: const EdgeInsets.only(top: 4),
-          child: Text(
-            '￥${product['price']}',
-            style: TextStyle(
-              color: Theme.of(context).colorScheme.primary,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ),
-        trailing: PopupMenuButton<String>(
-          onSelected: (value) {
-            if (value == 'edit') {
-              onEdit(product); // 触发外界传进来的弹窗回调
-            }
-            if (value == 'delete') {
-              // 触发删除逻辑
-              context.read<ProductProvider>().deleteProduct(
-                product['id'],
-                product['name'],
-                context,
-              );
-            }
-          },
-          itemBuilder: (context) => [
-            const PopupMenuItem(
-              value: 'edit',
-              child: ListTile(
-                leading: Icon(Icons.edit_outlined),
-                title: Text('编辑'),
-                contentPadding: EdgeInsets.zero,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // 左侧：商品图片
+          Opacity(
+            opacity: isActive ? 1.0 : 0.5, // 下架商品变灰
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: Container(
+                width: 85,
+                height: 85,
+                color: Colors.grey[200],
+                child: product['image_url'] != null
+                    ? Image.network(
+                        product['image_url'],
+                        fit: BoxFit.cover,
+                        errorBuilder: (ctx, err, stack) => const Icon(
+                          Icons.image_not_supported,
+                          color: Colors.grey,
+                        ),
+                      )
+                    : const Icon(Icons.fastfood, color: Colors.grey, size: 40),
               ),
             ),
-            const PopupMenuItem(
-              value: 'delete',
-              child: ListTile(
-                leading: Icon(Icons.delete_outline, color: Colors.red),
-                title: Text('删除', style: TextStyle(color: Colors.red)),
-                contentPadding: EdgeInsets.zero,
-              ),
+          ),
+          const SizedBox(width: 12),
+
+          // 右侧：商品信息
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // 标题与删除按钮
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Expanded(
+                      child: Text(
+                        product['name'] ?? '未知',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                          color: isActive ? Colors.black87 : Colors.grey,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    if (!isActive) // 只在下架状态显示删除按钮，防止误删热销商品
+                      InkWell(
+                        onTap: () =>
+                            context.read<ProductProvider>().deleteProduct(
+                              product['id'],
+                              product['name'],
+                              context,
+                            ),
+                        child: const Icon(
+                          Icons.delete_outline,
+                          color: Colors.red,
+                          size: 20,
+                        ),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+
+                // 描述信息
+                Text(
+                  product['description']?.isNotEmpty == true
+                      ? product['description']
+                      : '暂无商品描述',
+                  style: const TextStyle(color: Colors.grey, fontSize: 12),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 12),
+
+                // 底部：价格与上下架操作
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text(
+                      '￥${product['price']}',
+                      style: TextStyle(
+                        color: isActive ? Colors.redAccent : Colors.grey,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 18,
+                      ),
+                    ),
+                    Row(
+                      children: [
+                        // 编辑按钮
+                        OutlinedButton(
+                          onPressed: () => onEdit(product),
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 0,
+                            ),
+                            minimumSize: const Size(0, 28),
+                            side: BorderSide(color: Colors.grey.shade300),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                          ),
+                          child: const Text(
+                            '编辑',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.black87,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        // 上下架快捷开关
+                        OutlinedButton(
+                          onPressed: () => context
+                              .read<ProductProvider>()
+                              .toggleProductStatus(
+                                product['id'],
+                                isActive,
+                                context,
+                              ),
+                          style: OutlinedButton.styleFrom(
+                            backgroundColor: isActive
+                                ? Colors.white
+                                : Colors.grey[100],
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 0,
+                            ),
+                            minimumSize: const Size(0, 28),
+                            side: BorderSide(
+                              color: isActive
+                                  ? Colors.orangeAccent
+                                  : Colors.grey.shade300,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                          ),
+                          child: Text(
+                            isActive ? '下架' : '上架',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: isActive
+                                  ? Colors.orangeAccent.shade700
+                                  : Colors.grey,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ],
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

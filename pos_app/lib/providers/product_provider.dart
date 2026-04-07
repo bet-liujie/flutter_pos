@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import '../services/api_service.dart';
+import 'package:image_picker/image_picker.dart';
 
 class ProductProvider extends ChangeNotifier {
   final ApiService _api = ApiService();
@@ -73,26 +74,23 @@ class ProductProvider extends ChangeNotifier {
 
   Future<void> saveProduct(
     String name,
-    double price, {
+    double price,
+    String desc,
+    bool isActive,
+    XFile? image, {
     int? id,
     required BuildContext context,
   }) async {
     try {
       if (id == null) {
-        // 调用 Service 新增
-        await _api.addProduct(name, price);
+        await _api.addProduct(name, price, desc, isActive, image);
       } else {
-        // 调用 Service 更新
-        await _api.updateProduct(id, name, price);
+        await _api.updateProduct(id, name, price, desc, isActive, image);
       }
-
-      // 操作成功后，手动触发一次带 Loading 的刷新
       await fetchProducts(showLoading: true);
-
-      // 成功提示
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(id == null ? '添加成功: $name' : '更新成功: $name'),
+          content: Text(id == null ? '添加成功' : '更新成功'),
           backgroundColor: Colors.green,
         ),
       );
@@ -101,6 +99,43 @@ class ProductProvider extends ChangeNotifier {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('操作失败，请检查网络'),
+          backgroundColor: Colors.redAccent,
+        ),
+      );
+    }
+  }
+
+  // 💥 新增：快捷切换上下架
+  Future<void> toggleProductStatus(
+    int id,
+    bool currentStatus,
+    BuildContext context,
+  ) async {
+    final newStatus = !currentStatus;
+    // 先在本地 UI 乐观更新（让开关瞬间拨过去，不卡顿）
+    final index = _allProducts.indexWhere((p) => p['id'] == id);
+    if (index != -1) {
+      _allProducts[index]['is_active'] = newStatus;
+      runFilter(_searchQuery);
+    }
+
+    try {
+      await _api.toggleStatus(id, newStatus);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(newStatus ? '已上架' : '已下架'),
+          duration: const Duration(seconds: 1),
+        ),
+      );
+    } catch (e) {
+      // 如果后端请求失败，把状态回滚
+      if (index != -1) {
+        _allProducts[index]['is_active'] = currentStatus;
+        runFilter(_searchQuery);
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('状态切换失败'),
           backgroundColor: Colors.redAccent,
         ),
       );

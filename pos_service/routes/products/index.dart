@@ -1,121 +1,159 @@
+import 'dart:io';
 import 'package:dart_frog/dart_frog.dart';
 import 'package:postgres/postgres.dart';
 
-// 处理 /products 路由的所有 HTTP 请求（增删查改）
 Future<Response> onRequest(RequestContext context) async {
-  // 从 context 获取数据库连接池
   final pool = context.read<Pool>();
+  final method = context.request.method;
 
-  try {
-    switch (context.request.method) {
-      case HttpMethod.get:
-        // 查询商品（支持通过 id 查询单个商品，也支持查询全部商品）
-        final id = context.request.uri.queryParameters['id'];
-        if (id != null) {
-          // serial4 实际就是 int，类型安全建议依然转 int 校验
-          final pid = int.tryParse(id);
-          if (pid == null) {
-            return Response.json(
-              statusCode: 400,
-              body: {'status': 'error', 'message': 'Invalid id'},
-            );
-          }
-          // SQL 占位符用 $1，参数用 List
-          final result = await pool.execute(
-            r'SELECT * FROM products WHERE id = $1',
-            parameters: [pid],
-          );
-          final data = result.map((row) => row.toColumnMap()).toList();
-          if (data.isEmpty) {
-            return Response.json(
-              statusCode: 404,
-              body: {'status': 'error', 'message': 'Product not found'},
-            );
-          }
-          return Response.json(
-            body: {'status': 'ok', 'item': data.first},
-          );
-        } else {
-          final result = await pool.execute('SELECT * FROM products');
-          final data = result.map((row) => row.toColumnMap()).toList();
-          return Response.json(body: {'status': 'ok', 'items': data});
-        }
+  return await pool.withConnection((connection) async {
+    try {
+      if (method == HttpMethod.get) return await _getProducts(connection);
+      if (method == HttpMethod.post)
+        return await _addProduct(context, connection);
+      if (method == HttpMethod.put)
+        return await _updateProduct(context, connection); // 👈 在这里
+      if (method == HttpMethod.delete)
+        return await _deleteProduct(context, connection); // 👈 在这里
 
-      case HttpMethod.post:
-        // 新增商品，直接用 context.request.json() 解析 body
-        final data = await context.request.json() as Map<String, dynamic>;
-        final name = data['name']?.toString();
-        final price = num.tryParse(data['price']?.toString() ?? '');
-        if (name == null || name.isEmpty || price == null) {
-          return Response.json(
-            statusCode: 400,
-            body: {'status': 'error', 'message': 'Invalid name or price'},
-          );
-        }
-        final result = await pool.execute(
-          r'INSERT INTO products (name, price) VALUES ($1, $2) RETURNING id',
-          parameters: [name, price],
-        );
-        final insertedId = result.firstOrNull?.toColumnMap()['id'];
-        return Response.json(body: {'status': 'created', 'id': insertedId});
-
-      case HttpMethod.put:
-        // 更新商品
-        final data = await context.request.json() as Map<String, dynamic>;
-        final id = int.tryParse(data['id']?.toString() ?? '');
-        final name = data['name']?.toString();
-        final price = num.tryParse(data['price']?.toString() ?? '');
-        if (id == null || name == null || name.isEmpty || price == null) {
-          return Response.json(
-            statusCode: 400,
-            body: {'status': 'error', 'message': 'Invalid id, name or price'},
-          );
-        }
-        final result = await pool.execute(
-          r'UPDATE products SET name = $1, price = $2 WHERE id = $3',
-          parameters: [name, price, id],
-        );
-        if (result.affectedRows == 0) {
-          return Response.json(
-            statusCode: 404,
-            body: {'status': 'error', 'message': 'Product not found'},
-          );
-        }
-        return Response.json(body: {'status': 'updated', 'id': id});
-
-      case HttpMethod.delete:
-        // 删除商品
-        final id = context.request.uri.queryParameters['id'];
-        final pid = int.tryParse(id ?? '');
-        if (pid == null) {
-          return Response.json(
-            statusCode: 400,
-            body: {'status': 'error', 'message': 'Invalid id'},
-          );
-        }
-        final result = await pool.execute(
-          r'DELETE FROM products WHERE id = $1',
-          parameters: [pid],
-        );
-        if (result.affectedRows == 0) {
-          return Response.json(
-            statusCode: 404,
-            body: {'status': 'error', 'message': 'Product not found'},
-          );
-        }
-        return Response.json(body: {'status': 'deleted', 'id': pid});
-
-      default:
-        return Response.json(
-          statusCode: 405,
-          body: {'status': 'error', 'message': 'Method not allowed'},
-        );
+      return Response(statusCode: HttpStatus.methodNotAllowed);
+    } catch (e) {
+      return Response.json(statusCode: 500, body: {'error': e.toString()});
     }
-  } catch (e) {
-    // 捕获所有异常，返回通用错误信息，避免泄露细节
-    return Response.json(
-      statusCode: 500,
-      body: {'status': 'error', 'message': 'Internal server error'},
+  });
+}
+
+// --- 以下是具体的实现函数 ---
+
+// 1. 获取列表
+Future<Response> _getProducts(Connection connection) async {
+  final result = await connection.execute(
+    'SELECT * FROM products ORDER BY id DESC',
+  );
+  return Response.json(
+    body: {'items': result.map((r) => r.toColumnMap()).toList()},
+  );
+}
+
+// 2. 新增商品
+Future<Response> _addProduct(
+  RequestContext context,
+  Connection connection,
+) async {
+  final formData = await context.request.formData();
+  String? imageUrl;
+  if (formData.files['image'] != null) {
+    imageUrl = await _saveFile(context.request, formData.files['image']!);
+  }
+
+  await connection.execute(
+    r'INSERT INTO products (name, price, description, is_active, image_url) VALUES ($1, $2, $3, $4, $5)',
+    parameters: [
+      formData.fields['name'],
+      double.tryParse(formData.fields['price'] ?? '0'),
+      formData.fields['description'],
+      formData.fields['is_active'] == 'true',
+      imageUrl,
+    ],
+  );
+  return Response.json(body: {'message': '添加成功'});
+}
+
+// 3. 更新商品 (包含【清理旧图片】逻辑)
+Future<Response> _updateProduct(
+  RequestContext context,
+  Connection connection,
+) async {
+  final formData = await context.request.formData();
+  final id = int.parse(formData.fields['id']!);
+
+  // A. 先查出数据库里旧的图片地址
+  final oldData = await connection.execute(
+    r'SELECT image_url FROM products WHERE id = $1',
+    parameters: [id],
+  );
+  final oldImageUrl =
+      oldData.firstOrNull?.toColumnMap()['image_url'] as String?;
+
+  String? newImageUrl;
+  if (formData.files['image'] != null) {
+    // B. 如果上传了新图，先把磁盘上的旧图删掉
+    await _physicalDeleteFile(oldImageUrl);
+    // C. 保存新图
+    newImageUrl = await _saveFile(context.request, formData.files['image']!);
+
+    await connection.execute(
+      r'UPDATE products SET name=$1, price=$2, description=$3, is_active=$4, image_url=$5 WHERE id=$6',
+      parameters: [
+        formData.fields['name'],
+        double.tryParse(formData.fields['price'] ?? '0'),
+        formData.fields['description'],
+        formData.fields['is_active'] == 'true',
+        newImageUrl,
+        id,
+      ],
     );
+  } else {
+    // 没传新图，只更新文字
+    await connection.execute(
+      r'UPDATE products SET name=$1, price=$2, description=$3, is_active=$4 WHERE id=$5',
+      parameters: [
+        formData.fields['name'],
+        double.tryParse(formData.fields['price'] ?? '0'),
+        formData.fields['description'],
+        formData.fields['is_active'] == 'true',
+        id,
+      ],
+    );
+  }
+  return Response.json(body: {'message': '更新成功'});
+}
+
+// 4. 删除商品 (包含【物理删除图片】逻辑)
+Future<Response> _deleteProduct(
+  RequestContext context,
+  Connection connection,
+) async {
+  final id = int.tryParse(context.request.url.queryParameters['id'] ?? '');
+  if (id == null) return Response(statusCode: 400);
+
+  // A. 先拿图片地址
+  final data = await connection.execute(
+    r'SELECT image_url FROM products WHERE id = $1',
+    parameters: [id],
+  );
+  final imageUrl = data.firstOrNull?.toColumnMap()['image_url'] as String?;
+
+  // B. 删磁盘文件
+  await _physicalDeleteFile(imageUrl);
+
+  // C. 删数据库记录
+  await connection.execute(
+    r'DELETE FROM products WHERE id = $1',
+    parameters: [id],
+  );
+
+  return Response.json(body: {'message': '删除成功'});
+}
+
+// --- 辅助工具函数 ---
+
+// 保存文件到磁盘
+Future<String> _saveFile(Request request, UploadedFile file) async {
+  final ext = file.name.split('.').last;
+  final fileName = '${DateTime.now().millisecondsSinceEpoch}.$ext';
+  await File('public/uploads/$fileName').writeAsBytes(await file.readAsBytes());
+  return 'http://${request.headers['host']}/uploads/$fileName';
+}
+
+// 💥 物理删除磁盘文件
+Future<void> _physicalDeleteFile(String? url) async {
+  if (url == null || url.isEmpty) return;
+  try {
+    final fileName = Uri.parse(url).pathSegments.last;
+    final file = File('public/uploads/$fileName');
+    if (await file.exists()) await file.delete();
+  } catch (e) {
+    print('清理文件失败: $e');
   }
 }
