@@ -6,7 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'features/activation/activation_page.dart';
 import 'features/pos/product_page.dart';
 import 'features/pos/product_provider.dart';
-import 'app_router.dart';
+import 'core/router/app_router.dart';
 import 'features/activation/auth_provider.dart';
 import 'core/widgets/network_overlay.dart';
 
