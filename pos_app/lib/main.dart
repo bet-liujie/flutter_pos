@@ -7,6 +7,7 @@ import 'features/activation/activation_page.dart';
 import 'features/pos/product_page.dart';
 import 'features/pos/product_provider.dart';
 import 'app_router.dart';
+import 'features/activation/auth_provider.dart';
 
 void main() async {
   // 💥 关键点 1：确保 Flutter 底层绑定完成，才能使用本地存储插件
