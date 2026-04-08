@@ -6,42 +6,41 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'features/activation/activation_page.dart';
 import 'features/pos/product_page.dart';
 import 'features/pos/product_provider.dart';
+import 'app_router.dart';
 
 void main() async {
   // 💥 关键点 1：确保 Flutter 底层绑定完成，才能使用本地存储插件
   WidgetsFlutterBinding.ensureInitialized();
 
-  // 💥 关键点 2：在 App 启动前，读取硬盘上的激活状态
-  final prefs = await SharedPreferences.getInstance();
-  final isActivated = prefs.getBool('is_device_activated') ?? false;
-
   runApp(
     MultiProvider(
       providers: [
+        ChangeNotifierProvider(create: (_) => AuthProvider()),
         ChangeNotifierProvider(create: (_) => ProductProvider()),
-        // 以后有 appStoreProvider 等都加在这里
       ],
-      child: MyApp(isActivated: isActivated),
+      child: MyApp(),
     ),
   );
 }
 
 class MyApp extends StatelessWidget {
-  final bool isActivated;
-
-  const MyApp({super.key, required this.isActivated});
+  const MyApp({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
+    // 获取 AuthProvider 的实例，传给路由进行监控
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+
+    // 💥 使用 MaterialApp.router 替代 MaterialApp
+    return MaterialApp.router(
       title: '餐饮智能 OS',
-      debugShowCheckedModeBanner: false, // 隐藏右上角的 debug 标签
+      debugShowCheckedModeBanner: false,
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.orangeAccent),
         useMaterial3: true,
       ),
-      // 💥 关键点 3：路由分发 (已激活进收银台，未激活进防盗门)
-      home: isActivated ? const ProductPage() : const ActivationPage(),
+      // 载入刚才写的路由配置
+      routerConfig: createRouter(authProvider), 
     );
   }
 }
