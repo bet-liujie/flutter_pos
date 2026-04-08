@@ -5,6 +5,8 @@ import 'package:image_picker/image_picker.dart';
 import 'product_provider.dart';
 // ⚠️ 注意：这里确保你的文件名是 product_model.dart
 import 'product_models.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import '../activation/activation_page.dart'; // 引入你的防盗门页面
 
 class ProductPage extends StatefulWidget {
   const ProductPage({super.key});
@@ -228,9 +230,21 @@ class _ProductPageState extends State<ProductPage> {
     return Scaffold(
       backgroundColor: Colors.grey[100],
       appBar: AppBar(
-        title: const Text(
-          '商品管理',
-          style: TextStyle(fontWeight: FontWeight.bold),
+        title: GestureDetector(
+          onDoubleTap: () async {
+            // 双击标题，暗中清除激活码
+            final prefs = await SharedPreferences.getInstance();
+            await prefs.clear();
+            if (context.mounted) {
+              Navigator.of(context).pushReplacement(
+                MaterialPageRoute(builder: (context) => const ActivationPage()),
+              );
+            }
+          },
+          child: const Text(
+            '商品管理',
+            style: TextStyle(fontWeight: FontWeight.bold),
+          ),
         ),
         backgroundColor: Colors.white,
         surfaceTintColor: Colors.transparent,
