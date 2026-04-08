@@ -1,13 +1,14 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import '../services/api_service.dart';
+import '../../services/api_service.dart';
 import 'package:image_picker/image_picker.dart';
+import 'product_models.dart'; // 👈 完美引入你的图纸
 
 class ProductProvider extends ChangeNotifier {
   final ApiService _api = ApiService();
 
-  List<Map<String, dynamic>> _allProducts = [];
-  List<Map<String, dynamic>> filteredProducts = [];
+  List<Product> _allProducts = [];
+  List<Product> filteredProducts = [];
   bool isLoading = false;
   String? errorMessage;
   String _searchQuery = '';
@@ -38,13 +39,11 @@ class ProductProvider extends ChangeNotifier {
     } else {
       filteredProducts = _allProducts
           .where(
-            (p) => p['name'].toString().toLowerCase().contains(
-              query.toLowerCase(),
-            ),
+            // 💥 修复 1：使用强类型点语法 p.name
+            (p) => p.name.toLowerCase().contains(query.toLowerCase()),
           )
           .toList();
     }
-    // 关键：必须通知 UI 刷新
     notifyListeners();
   }
 
@@ -56,10 +55,11 @@ class ProductProvider extends ChangeNotifier {
 
     try {
       final newData = await _api.getProducts();
-      // 这里可以对比一下新老数据，如果没变就不跑 runFilter 了（可选优化）
-      _allProducts = newData;
+      // 💥 修复 2：把后端传来的 Map 列表，加工转换成 Product 对象列表
+      _allProducts = newData.map((json) => Product.fromJson(json)).toList();
+
       errorMessage = null;
-      runFilter(_searchQuery); // runFilter 内部会执行 notifyListeners()
+      runFilter(_searchQuery);
       print('✅ 数据已同步，当前商品数：${_allProducts.length}');
     } catch (e) {
       print('❌ 定时刷新失败: $e');
@@ -112,10 +112,20 @@ class ProductProvider extends ChangeNotifier {
     BuildContext context,
   ) async {
     final newStatus = !currentStatus;
-    // 先在本地 UI 乐观更新（让开关瞬间拨过去，不卡顿）
-    final index = _allProducts.indexWhere((p) => p['id'] == id);
+
+    // 💥 修复 3：使用强类型点语法 p.id
+    final index = _allProducts.indexWhere((p) => p.id == id);
     if (index != -1) {
-      _allProducts[index]['is_active'] = newStatus;
+      // 💥 修复 4：因为 Product 属性是 final 的，所以我们用一个“新对象”来替换旧对象实现乐观更新
+      final old = _allProducts[index];
+      _allProducts[index] = Product(
+        id: old.id,
+        name: old.name,
+        price: old.price,
+        description: old.description,
+        isActive: newStatus, // 这里换成新状态
+        imageUrl: old.imageUrl,
+      );
       runFilter(_searchQuery);
     }
 
@@ -128,9 +138,17 @@ class ProductProvider extends ChangeNotifier {
         ),
       );
     } catch (e) {
-      // 如果后端请求失败，把状态回滚
+      // 💥 修复 5：失败回滚时，也同样替换成旧对象
       if (index != -1) {
-        _allProducts[index]['is_active'] = currentStatus;
+        final old = _allProducts[index];
+        _allProducts[index] = Product(
+          id: old.id,
+          name: old.name,
+          price: old.price,
+          description: old.description,
+          isActive: currentStatus, // 回滚到旧状态
+          imageUrl: old.imageUrl,
+        );
         runFilter(_searchQuery);
       }
       ScaffoldMessenger.of(context).showSnackBar(

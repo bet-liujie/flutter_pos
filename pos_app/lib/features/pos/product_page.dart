@@ -2,7 +2,9 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:image_picker/image_picker.dart';
-import '../providers/product_provider.dart';
+import 'product_provider.dart';
+// ⚠️ 注意：这里确保你的文件名是 product_model.dart
+import 'product_models.dart';
 
 class ProductPage extends StatefulWidget {
   const ProductPage({super.key});
@@ -12,22 +14,17 @@ class ProductPage extends StatefulWidget {
 }
 
 class _ProductPageState extends State<ProductPage> {
-  // 💥 改造后的表单弹窗
-  void _showProductForm(
-    BuildContext context, [
-    Map<String, dynamic>? existingProduct,
-  ]) {
+  // 💥 表单弹窗：已经完全接收 Product 对象
+  void _showProductForm(BuildContext context, [Product? existingProduct]) {
     final isEditing = existingProduct != null;
-    final nameCtrl = TextEditingController(text: existingProduct?['name']);
-    final priceCtrl = TextEditingController(
-      text: existingProduct?['price']?.toString(),
-    );
-    final descCtrl = TextEditingController(
-      text: existingProduct?['description'],
-    );
 
-    // 默认新商品是上架状态 (true)
-    bool isActive = existingProduct?['is_active'] ?? true;
+    final nameCtrl = TextEditingController(text: existingProduct?.name);
+    final priceCtrl = TextEditingController(
+      text: existingProduct?.price.toString(),
+    );
+    final descCtrl = TextEditingController(text: existingProduct?.description);
+
+    bool isActive = existingProduct?.isActive ?? true;
     XFile? selectedImage;
     final ImagePicker picker = ImagePicker();
 
@@ -39,7 +36,6 @@ class _ProductPageState extends State<ProductPage> {
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       builder: (ctx) => StatefulBuilder(
-        // 使用 StatefulBuilder 让弹窗内部可以独立刷新状态（比如选中图片后）
         builder: (BuildContext context, StateSetter setModalState) {
           return Padding(
             padding: EdgeInsets.only(
@@ -73,7 +69,8 @@ class _ProductPageState extends State<ProductPage> {
                           ),
                           Switch(
                             value: isActive,
-                            activeColor: Colors.green,
+                            activeThumbColor:
+                                Colors.green, // 修复了 activeThumbColor 的警告
                             onChanged: (val) =>
                                 setModalState(() => isActive = val),
                           ),
@@ -83,15 +80,16 @@ class _ProductPageState extends State<ProductPage> {
                   ),
                   const SizedBox(height: 20),
 
-                  // 图片上传区域
+                  // 💥 图片上传区域：改成点语法
                   Center(
                     child: GestureDetector(
                       onTap: () async {
                         final XFile? image = await picker.pickImage(
                           source: ImageSource.gallery,
                         );
-                        if (image != null)
+                        if (image != null) {
                           setModalState(() => selectedImage = image);
+                        }
                       },
                       child: Container(
                         width: 100,
@@ -109,18 +107,18 @@ class _ProductPageState extends State<ProductPage> {
                                   fit: BoxFit.cover,
                                 )
                               : (isEditing &&
-                                    existingProduct['image_url'] != null)
+                                    existingProduct.imageUrl != null) // 👈 点语法
                               ? DecorationImage(
                                   image: NetworkImage(
-                                    existingProduct['image_url'],
-                                  ),
+                                    existingProduct.imageUrl!,
+                                  ), // 👈 点语法
                                   fit: BoxFit.cover,
                                 )
                               : null,
                         ),
                         child:
                             (selectedImage == null &&
-                                (existingProduct?['image_url'] == null))
+                                (existingProduct?.imageUrl == null)) // 👈 点语法
                             ? const Column(
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
@@ -189,7 +187,7 @@ class _ProductPageState extends State<ProductPage> {
                             descCtrl.text.trim(),
                             isActive,
                             selectedImage,
-                            id: existingProduct?['id'],
+                            id: existingProduct?.id, // 👈 点语法
                             context: context,
                           );
                         }
@@ -312,7 +310,8 @@ class _ProductPageState extends State<ProductPage> {
                     itemCount: pro.filteredProducts.length,
                     itemBuilder: (context, index) {
                       return ProductCardMeituan(
-                        product: pro.filteredProducts[index],
+                        product:
+                            pro.filteredProducts[index], // 这里传进去的是 Product 对象了
                         onEdit: (p) => _showProductForm(context, p),
                       );
                     },
@@ -324,10 +323,10 @@ class _ProductPageState extends State<ProductPage> {
   }
 }
 
-// 💥 美团风商品卡片
+// 💥 美团风商品卡片：完全改用强类型 Product
 class ProductCardMeituan extends StatelessWidget {
-  final Map<String, dynamic> product;
-  final Function(Map<String, dynamic>) onEdit;
+  final Product product; // 👈 强类型
+  final Function(Product) onEdit; // 👈 强类型回调
 
   const ProductCardMeituan({
     super.key,
@@ -337,8 +336,7 @@ class ProductCardMeituan extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // 解析状态，处理旧数据可能没有 is_active 字段的情况
-    final bool isActive = product['is_active'] ?? true;
+    final bool isActive = product.isActive; // 👈 点语法
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
@@ -359,16 +357,18 @@ class ProductCardMeituan extends StatelessWidget {
         children: [
           // 左侧：商品图片
           Opacity(
-            opacity: isActive ? 1.0 : 0.5, // 下架商品变灰
+            opacity: isActive ? 1.0 : 0.5,
             child: ClipRRect(
               borderRadius: BorderRadius.circular(8),
               child: Container(
                 width: 85,
                 height: 85,
                 color: Colors.grey[200],
-                child: product['image_url'] != null
+                child:
+                    product.imageUrl !=
+                        null // 👈 点语法
                     ? Image.network(
-                        product['image_url'],
+                        product.imageUrl!, // 👈 点语法
                         fit: BoxFit.cover,
                         errorBuilder: (ctx, err, stack) => const Icon(
                           Icons.image_not_supported,
@@ -386,13 +386,12 @@ class ProductCardMeituan extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // 标题与删除按钮
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Expanded(
                       child: Text(
-                        product['name'] ?? '未知',
+                        product.name, // 👈 点语法
                         style: TextStyle(
                           fontWeight: FontWeight.bold,
                           fontSize: 16,
@@ -402,12 +401,12 @@ class ProductCardMeituan extends StatelessWidget {
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
-                    if (!isActive) // 只在下架状态显示删除按钮，防止误删热销商品
+                    if (!isActive)
                       InkWell(
                         onTap: () =>
                             context.read<ProductProvider>().deleteProduct(
-                              product['id'],
-                              product['name'],
+                              product.id, // 👈 点语法
+                              product.name, // 👈 点语法
                               context,
                             ),
                         child: const Icon(
@@ -419,25 +418,22 @@ class ProductCardMeituan extends StatelessWidget {
                   ],
                 ),
                 const SizedBox(height: 4),
-
-                // 描述信息
                 Text(
-                  product['description']?.isNotEmpty == true
-                      ? product['description']
+                  product.description.isNotEmpty
+                      ? product
+                            .description // 👈 点语法
                       : '暂无商品描述',
                   style: const TextStyle(color: Colors.grey, fontSize: 12),
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                 ),
                 const SizedBox(height: 12),
-
-                // 底部：价格与上下架操作
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
                     Text(
-                      '￥${product['price']}',
+                      '￥${product.price}', // 👈 点语法
                       style: TextStyle(
                         color: isActive ? Colors.redAccent : Colors.grey,
                         fontWeight: FontWeight.bold,
@@ -446,7 +442,6 @@ class ProductCardMeituan extends StatelessWidget {
                     ),
                     Row(
                       children: [
-                        // 编辑按钮
                         OutlinedButton(
                           onPressed: () => onEdit(product),
                           style: OutlinedButton.styleFrom(
@@ -469,12 +464,11 @@ class ProductCardMeituan extends StatelessWidget {
                           ),
                         ),
                         const SizedBox(width: 8),
-                        // 上下架快捷开关
                         OutlinedButton(
                           onPressed: () => context
                               .read<ProductProvider>()
                               .toggleProductStatus(
-                                product['id'],
+                                product.id, // 👈 点语法
                                 isActive,
                                 context,
                               ),

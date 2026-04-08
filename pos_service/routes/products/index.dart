@@ -6,15 +6,18 @@ Future<Response> onRequest(RequestContext context) async {
   final pool = context.read<Pool>();
   final method = context.request.method;
 
-  return await pool.withConnection((connection) async {
+  return pool.withConnection((connection) async {
     try {
       if (method == HttpMethod.get) return await _getProducts(connection);
-      if (method == HttpMethod.post)
+      if (method == HttpMethod.post) {
         return await _addProduct(context, connection);
-      if (method == HttpMethod.put)
+      }
+      if (method == HttpMethod.put) {
         return await _updateProduct(context, connection); // 👈 在这里
-      if (method == HttpMethod.delete)
+      }
+      if (method == HttpMethod.delete) {
         return await _deleteProduct(context, connection); // 👈 在这里
+      }
 
       return Response(statusCode: HttpStatus.methodNotAllowed);
     } catch (e) {
