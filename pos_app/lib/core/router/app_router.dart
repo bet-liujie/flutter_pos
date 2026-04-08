@@ -1,7 +1,7 @@
 import 'package:go_router/go_router.dart';
-import 'features/activation/activation_page.dart';
-import 'features/pos/product_page.dart';
-import 'features/activation/auth_provider.dart';
+import 'package:pos_app/features/activation/activation_page.dart';
+import 'package:pos_app/features/pos/product_page.dart';
+import 'package:pos_app/features/activation/auth_provider.dart';
 
 GoRouter createRouter(AuthProvider authProvider) {
   return GoRouter(
