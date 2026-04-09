@@ -25,6 +25,23 @@ Future<Response> onRequest(RequestContext context, String id) async {
 
     // 4. 使用连接池执行更新
     return await pool.withConnection((connection) async {
+      if (isActive == true) {
+        final check = await connection.execute(
+          r'SELECT stock FROM products WHERE id = $1 AND is_deleted = FALSE',
+          parameters: [int.parse(id)],
+        );
+        if (check.isEmpty)
+          return Response.json(statusCode: 404, body: {'error': '商品不存在'});
+
+        final stock = check.first[0] as int;
+        if (stock <= 0) {
+          return Response.json(
+            statusCode: HttpStatus.badRequest,
+            body: {'error': '库存为 0，无法上架该商品'},
+          );
+        }
+      }
+
       final result = await connection.execute(
         r'UPDATE products SET is_active = $1 WHERE id = $2',
         parameters: [isActive, int.parse(id)],

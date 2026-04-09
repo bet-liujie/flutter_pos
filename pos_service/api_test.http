@@ -72,3 +72,47 @@ Content-Type: application/json
 {
   "status": "hahaha" 
 }
+### 6. 创建商品 (测试 multipart/form-data)
+POST {{baseUrl}}/products
+Content-Type: application/x-www-form-urlencoded
+
+name=极客招牌汉堡&price=28.5&stock=5&is_active=true
+
+#### 7. 获取商品列表，验证新商品是否成功创建
+GET {{baseUrl}}/products
+
+### 8. 创建订单 (测试正常流程)
+POST {{baseUrl}}/orders
+Content-Type: application/json
+
+{
+  "payment_method": "wechat",
+  "items": [
+    {
+      "products_id": 30, 
+      "quantity": 2
+    }
+  ]
+}
+
+### 9. 创建订单 (测试库存不足)
+POST {{baseUrl}}/orders
+Content-Type: application/json
+
+{
+  "payment_method": "alipay",
+  "items": [
+    {
+      "products_id": 30, 
+      "quantity": 3
+    }
+  ]
+}
+
+### 8. 老板手动强行上架测试 (无库存状态下)
+PATCH {{baseUrl}}/products/30/status
+Content-Type: application/json
+
+{
+  "is_active": true
+}

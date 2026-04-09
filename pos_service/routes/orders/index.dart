@@ -10,8 +10,18 @@ Future<Response> onRequest(RequestContext context) async {
 
 Future<Response> _createOrder(RequestContext context) async {
   final body = await context.request.json() as Map<String, dynamic>;
-  final items = body['items'] as List<dynamic>;
+
+  // 💥 安全防线：安全获取 items，如果为空或者没传，默认为空列表
+  final items = (body['items'] as List<dynamic>?) ?? [];
   final paymentMethod = body['payment_method'] ?? 'unpaid';
+
+  // 💥 严格校验：绝对不允许空订单混入数据库
+  if (items.isEmpty) {
+    return Response.json(
+      statusCode: 400,
+      body: {'success': false, 'error': '创建失败：订单明细 (items) 不能为空！'},
+    );
+  }
 
   // 1. 生成商业级流水号
   final now = DateTime.now();
@@ -40,28 +50,45 @@ Future<Response> _createOrder(RequestContext context) async {
 
       num realTotalAmount = 0;
 
-      // 3. 循环写入明细表
+      // 3. 循环处理明细并【扣减库存】
       for (final item in items) {
         final productsId = int.parse(item['products_id'].toString());
         final quantity = int.parse(item['quantity'].toString());
 
-        // ✨ 审阅修复：精确使用 is_deleted = FALSE，配合绝对可靠的 $1 位置参数
+        // ✨ 核心升级：连同 stock 和 is_active 一起查出来
         final productCheck = await ctx.execute(
-          r'SELECT name, price FROM products WHERE id = $1 AND is_deleted = FALSE',
+          r'SELECT name, price, stock, is_active FROM products WHERE id = $1 AND is_deleted = FALSE',
           parameters: [productsId],
         );
 
-        // 如果连 $1 写法都查不到，说明数据库里真的没有或者已经被软删除
         if (productCheck.isEmpty) {
           throw Exception('检测到异常：商品不存在或已被删除 (ID: $productsId)');
         }
 
         final realName = productCheck[0][0] as String;
-        // 兼容数字和字符串类型的价格
         final rawPrice = productCheck[0][1];
         final realPrice = rawPrice is num
             ? rawPrice
             : num.parse(rawPrice.toString());
+
+        // 解析库存和状态
+        final stock = productCheck[0][2] as int;
+        final isActive = productCheck[0][3] as bool;
+
+        // 💥 库存与上架状态检查
+        if (!isActive) {
+          throw Exception('商品 [$realName] 已下架，无法点单');
+        }
+        if (stock < quantity) {
+          throw Exception('商品 [$realName] 库存不足 (剩余: $stock)');
+        }
+
+        // 💥 计算新库存并更新数据库（若减为0，自动触发下架）
+        final newStock = stock - quantity;
+        await ctx.execute(
+          r'UPDATE products SET stock = $1, is_active = (CASE WHEN $1 = 0 THEN FALSE ELSE is_active END) WHERE id = $2',
+          parameters: [newStock, productsId],
+        );
 
         // 后端绝对控制小计
         final secureSubtotal = quantity * realPrice;
