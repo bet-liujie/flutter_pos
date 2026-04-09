@@ -3,10 +3,11 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:image_picker/image_picker.dart';
 import 'product_provider.dart';
-// ⚠️ 注意：这里确保你的文件名是 product_model.dart
+
+import 'package:go_router/go_router.dart';
+import '../activation/auth_provider.dart'; // 引入 AuthProvider
 import 'product_models.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import '../activation/activation_page.dart'; // 引入你的防盗门页面
 
 class ProductPage extends StatefulWidget {
   const ProductPage({super.key});
@@ -16,7 +17,7 @@ class ProductPage extends StatefulWidget {
 }
 
 class _ProductPageState extends State<ProductPage> {
-  // 💥 表单弹窗：已经完全接收 Product 对象
+  // 表单弹窗：已经完全接收 Product 对象
   void _showProductForm(BuildContext context, [Product? existingProduct]) {
     final isEditing = existingProduct != null;
 
@@ -232,13 +233,12 @@ class _ProductPageState extends State<ProductPage> {
       appBar: AppBar(
         title: GestureDetector(
           onDoubleTap: () async {
+            print('🥚 [彩蛋触发] 准备执行设备解绑及清理流程...');
             // 双击标题，暗中清除激活码
-            final prefs = await SharedPreferences.getInstance();
-            await prefs.clear();
+            await context.read<AuthProvider>().deactivateDevice();
+            // 使用 go_router 的指令进行显式跳转！
             if (context.mounted) {
-              Navigator.of(context).pushReplacement(
-                MaterialPageRoute(builder: (context) => const ActivationPage()),
-              );
+              context.go('/activation');
             }
           },
           child: const Text(

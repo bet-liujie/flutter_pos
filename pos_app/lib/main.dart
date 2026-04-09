@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 // 导入我们按功能划分的模块
@@ -11,29 +12,35 @@ import 'features/activation/auth_provider.dart';
 import 'core/widgets/network_overlay.dart';
 
 void main() async {
-  // 💥 关键点 1：确保 Flutter 底层绑定完成，才能使用本地存储插件
+  // 确保 Flutter 引擎已启动
   WidgetsFlutterBinding.ensureInitialized();
+
+  // 在渲染第一帧画面之前，先强制把硬盘数据读完！
+  final prefs = await SharedPreferences.getInstance();
+  final isActivated = prefs.getBool('is_device_activated') ?? false;
+
+  // 将明确的真实状态传给 AuthProvider
+  final authProvider = AuthProvider(initialStatus: isActivated);
+  final appRouter = createRouter(authProvider);
 
   runApp(
     MultiProvider(
       providers: [
-        ChangeNotifierProvider(create: (_) => AuthProvider()),
+        ChangeNotifierProvider.value(value: authProvider),
         ChangeNotifierProvider(create: (_) => ProductProvider()),
       ],
-      child: MyApp(),
+      child: MyApp(router: appRouter),
     ),
   );
 }
 
 class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+  final GoRouter router; // 接收唯一的 Router
+
+  const MyApp({super.key, required this.router});
 
   @override
   Widget build(BuildContext context) {
-    // 获取 AuthProvider 的实例，传给路由进行监控
-    final authProvider = Provider.of<AuthProvider>(context, listen: false);
-
-    // 💥 使用 MaterialApp.router 替代 MaterialApp
     return MaterialApp.router(
       title: '餐饮智能 OS',
       debugShowCheckedModeBanner: false,
@@ -41,13 +48,10 @@ class MyApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.orangeAccent),
         useMaterial3: true,
       ),
-      // 载入刚才写的路由配置
-      routerConfig: createRouter(authProvider), 
-      // 使用 builder 在整个路由栈的外层套一个网络监控
+      // 💥 关键修复 2：使用传入的 router，而不是重新 create
+      routerConfig: router,
       builder: (context, child) {
-        return NetworkOverlay(
-          child: child!,
-        );
+        return NetworkOverlay(child: child!);
       },
     );
   }

@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:pos_app/features/activation/activation_page.dart';
 import 'package:pos_app/features/pos/product_page.dart';
@@ -6,38 +7,32 @@ import 'package:pos_app/features/activation/auth_provider.dart';
 GoRouter createRouter(AuthProvider authProvider) {
   return GoRouter(
     initialLocation: '/pos',
-    // 💥 关键点 1：将路由器与 AuthProvider 绑定
-    // 只要 notifyListeners() 被调用，路由就会重新评估当前的页面
-    refreshListenable: authProvider, 
-    
-    // 💥 关键点 2：全局重定向拦截器 (核心防盗门逻辑)
+
+    // 彻底删除了 refreshListenable: authProvider！
+    // 杜绝它在后台偷偷和我们的点击事件抢夺路由控制权。
     redirect: (context, state) {
       final isActivated = authProvider.isActivated;
-      final isGoingToActivation = state.uri.toString() == '/activation';
+      final path = state.uri.path;
 
-      // 场景 A：设备未激活，且用户想去的不是激活页 -> 强制踢回激活页
-      if (!isActivated && !isGoingToActivation) {
+      // 守卫规则 1：没激活，想去别的地方 -> 踢回激活页
+      if (!isActivated && path != '/activation') {
         return '/activation';
       }
 
-      // 场景 B：设备已激活，但用户还在激活页 -> 自动护送到收银主页
-      if (isActivated && isGoingToActivation) {
+      // 守卫规则 2：已激活，但卡在激活页 -> 自动送到收银台
+      if (isActivated && path == '/activation') {
         return '/pos';
       }
 
-      // 场景 C：正常情况，不需要干预，放行
-      return null; 
+      return null;
     },
-    
+
     routes: [
       GoRoute(
         path: '/activation',
         builder: (context, state) => const ActivationPage(),
       ),
-      GoRoute(
-        path: '/pos',
-        builder: (context, state) => const ProductPage(),
-      ),
+      GoRoute(path: '/pos', builder: (context, state) => const ProductPage()),
     ],
   );
 }
