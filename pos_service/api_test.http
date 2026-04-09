@@ -8,23 +8,19 @@ POST {{baseUrl}}/orders
 Content-Type: application/json
 
 {
-  "total_amount": 70.00,
   "payment_method": "wechat",
   "items": [
     {
-      "product_id": 1,
-      "snapshot_name": "双层牛肉汉堡",
-      "snapshot_price": 25.00,
+      "products_id": 22,
       "quantity": 2
     },
     {
-      "product_id": 2,
-      "snapshot_name": "大杯冰可乐",
-      "snapshot_price": 10.00,
-      "quantity": 2
+      "products_id": 22,
+      "quantity": 10
     }
   ]
 }
+
 
 ### 测试修改后的假逻辑
 ### =========================================
@@ -40,3 +36,39 @@ DELETE {{baseUrl}}/products?id=25
 ### 3. 再次获取商品列表，验证该商品是否已经从结果中消失
 GET {{baseUrl}}/products
 
+### 2. 创建订单 (测试传入不存在的商品ID)
+POST {{baseUrl}}/orders
+Content-Type: application/json
+
+{
+  "payment_method": "alipay",
+  "items": [
+    {
+      "products_id": 9999, 
+      "quantity": 1
+    }
+  ]
+}
+### 3. 扭转订单状态 (接单制作)
+PATCH http://localhost:8080/orders/1/status
+Content-Type: application/json
+
+{
+  "status": "processing"
+}
+
+### 4. 扭转订单状态 (完成订单)
+PATCH http://localhost:8080/orders/1/status
+Content-Type: application/json
+
+{
+  "status": "completed"
+}
+
+### 5. 扭转订单状态 (测试非法状态)
+PATCH http://localhost:8080/orders/1/status
+Content-Type: application/json
+
+{
+  "status": "hahaha" 
+}

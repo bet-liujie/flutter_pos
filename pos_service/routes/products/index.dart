@@ -145,10 +145,21 @@ Future<Response> _deleteProduct(
 // --- 辅助工具函数 ---
 
 // 保存文件到磁盘
+// 保存文件到磁盘 (增加目录存在性检查)
 Future<String> _saveFile(Request request, UploadedFile file) async {
   final ext = file.name.split('.').last;
   final fileName = '${DateTime.now().millisecondsSinceEpoch}.$ext';
-  await File('public/uploads/$fileName').writeAsBytes(await file.readAsBytes());
+
+  final targetFile = File('public/uploads/$fileName');
+
+  // 💥 修复：在写入前，检查父级目录是否存在。如果不存在则递归创建它。
+  if (!await targetFile.parent.exists()) {
+    await targetFile.parent.create(recursive: true);
+  }
+
+  // 写入文件
+  await targetFile.writeAsBytes(await file.readAsBytes());
+
   return 'http://${request.headers['host']}/uploads/$fileName';
 }
 
