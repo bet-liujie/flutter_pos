@@ -4,8 +4,6 @@ import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 // 导入我们按功能划分的模块
-import 'features/activation/activation_page.dart';
-import 'features/pos/product_page.dart';
 import 'features/pos/product_provider.dart';
 import 'core/router/app_router.dart';
 import 'features/activation/auth_provider.dart';

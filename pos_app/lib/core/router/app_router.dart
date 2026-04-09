@@ -1,4 +1,3 @@
-import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:pos_app/features/activation/activation_page.dart';
 import 'package:pos_app/features/pos/product_page.dart';

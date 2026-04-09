@@ -1,0 +1,42 @@
+@baseUrl = http://192.168.43.251:8080
+
+### 获取商品列表
+GET {{baseUrl}}/products
+
+### 创建订单
+POST {{baseUrl}}/orders
+Content-Type: application/json
+
+{
+  "total_amount": 70.00,
+  "payment_method": "wechat",
+  "items": [
+    {
+      "product_id": 1,
+      "snapshot_name": "双层牛肉汉堡",
+      "snapshot_price": 25.00,
+      "quantity": 2
+    },
+    {
+      "product_id": 2,
+      "snapshot_name": "大杯冰可乐",
+      "snapshot_price": 10.00,
+      "quantity": 2
+    }
+  ]
+}
+
+### 测试修改后的假逻辑
+### =========================================
+### 商品模块 (Products) - 软删除测试验证
+### =========================================
+
+### 1. 先获取当前所有商品，找一个你想删除的商品 ID
+GET {{baseUrl}}/products
+
+### 2. 执行软删除 (假设你要删除 ID 为 1 的商品，请替换为你数据库里真实存在的 ID)
+DELETE {{baseUrl}}/products?id=25
+
+### 3. 再次获取商品列表，验证该商品是否已经从结果中消失
+GET {{baseUrl}}/products
+

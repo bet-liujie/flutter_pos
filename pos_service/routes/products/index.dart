@@ -31,7 +31,7 @@ Future<Response> onRequest(RequestContext context) async {
 // 1. 获取列表
 Future<Response> _getProducts(Connection connection) async {
   final result = await connection.execute(
-    'SELECT * FROM products ORDER BY id DESC',
+    'SELECT * FROM products WHERE is_deleted = FALSE ORDER BY id DESC',
   );
   return Response.json(
     body: {'items': result.map((r) => r.toColumnMap()).toList()},
@@ -62,7 +62,7 @@ Future<Response> _addProduct(
   return Response.json(body: {'message': '添加成功'});
 }
 
-// 3. 更新商品 (包含【清理旧图片】逻辑)
+// 3. 更新商品 (增加防脏写保护)
 Future<Response> _updateProduct(
   RequestContext context,
   Connection connection,
@@ -70,19 +70,23 @@ Future<Response> _updateProduct(
   final formData = await context.request.formData();
   final id = int.parse(formData.fields['id']!);
 
-  // A. 先查出数据库里旧的图片地址
-  final oldData = await connection.execute(
-    r'SELECT image_url FROM products WHERE id = $1',
+  // 💥 新增逻辑：修改前先检查该商品是否还存活
+  final checkData = await connection.execute(
+    r'SELECT is_deleted, image_url FROM products WHERE id = $1',
     parameters: [id],
   );
-  final oldImageUrl =
-      oldData.firstOrNull?.toColumnMap()['image_url'] as String?;
+
+  // 如果找不到数据，或者已经被标记为假删除，直接阻断
+  if (checkData.isEmpty || checkData.first[0] == true) {
+    return Response.json(statusCode: 400, body: {'error': '修改失败：该商品已被删除'});
+  }
+
+  // 获取旧图片地址，用于后续的清理逻辑
+  final oldImageUrl = checkData.first[1] as String?;
 
   String? newImageUrl;
   if (formData.files['image'] != null) {
-    // B. 如果上传了新图，先把磁盘上的旧图删掉
     await _physicalDeleteFile(oldImageUrl);
-    // C. 保存新图
     newImageUrl = await _saveFile(context.request, formData.files['image']!);
 
     await connection.execute(
@@ -97,7 +101,6 @@ Future<Response> _updateProduct(
       ],
     );
   } else {
-    // 没传新图，只更新文字
     await connection.execute(
       r'UPDATE products SET name=$1, price=$2, description=$3, is_active=$4 WHERE id=$5',
       parameters: [
@@ -112,7 +115,7 @@ Future<Response> _updateProduct(
   return Response.json(body: {'message': '更新成功'});
 }
 
-// 4. 删除商品 (包含【物理删除图片】逻辑)
+// 4. 删除商品 (软删除记录 + 物理删除图片释放资源)
 Future<Response> _deleteProduct(
   RequestContext context,
   Connection connection,
@@ -120,19 +123,19 @@ Future<Response> _deleteProduct(
   final id = int.tryParse(context.request.url.queryParameters['id'] ?? '');
   if (id == null) return Response(statusCode: 400);
 
-  // A. 先拿图片地址
+  // A. 先查询该商品的图片地址
   final data = await connection.execute(
     r'SELECT image_url FROM products WHERE id = $1',
     parameters: [id],
   );
   final imageUrl = data.firstOrNull?.toColumnMap()['image_url'] as String?;
 
-  // B. 删磁盘文件
+  // B. 物理删除磁盘文件，释放高占用资源
   await _physicalDeleteFile(imageUrl);
 
-  // C. 删数据库记录
+  // C. 软删除数据库记录，同时清空 image_url 字段防脏数据
   await connection.execute(
-    r'DELETE FROM products WHERE id = $1',
+    r'UPDATE products SET is_deleted = TRUE, image_url = NULL WHERE id = $1',
     parameters: [id],
   );
 
@@ -149,7 +152,7 @@ Future<String> _saveFile(Request request, UploadedFile file) async {
   return 'http://${request.headers['host']}/uploads/$fileName';
 }
 
-// 💥 物理删除磁盘文件
+// 物理删除磁盘文件
 Future<void> _physicalDeleteFile(String? url) async {
   if (url == null || url.isEmpty) return;
   try {

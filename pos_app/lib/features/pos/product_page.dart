@@ -7,7 +7,6 @@ import 'product_provider.dart';
 import 'package:go_router/go_router.dart';
 import '../activation/auth_provider.dart'; // 引入 AuthProvider
 import 'product_models.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 class ProductPage extends StatefulWidget {
   const ProductPage({super.key});
