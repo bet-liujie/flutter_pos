@@ -72,58 +72,75 @@ class ProductProvider extends ChangeNotifier {
     }
   }
 
-  Future<void> saveProduct(
+  /// 1. 新增商品
+  Future<void> addProduct(
     String name,
     double price,
+    int stock,
     String desc,
     bool isActive,
-    XFile? image, {
-    int? id,
-    required BuildContext context,
-  }) async {
+    XFile? image,
+    BuildContext context,
+  ) async {
+    // ✨ 核心修复：在异步操作开始前，提前捕获 ScaffoldMessenger
+    final messenger = ScaffoldMessenger.of(context);
     try {
-      if (id == null) {
-        await _api.addProduct(name, price, desc, isActive, image);
-      } else {
-        await _api.updateProduct(id, name, price, desc, isActive, image);
-      }
+      await _api.addProduct(name, price, stock, desc, isActive, image);
       await fetchProducts(showLoading: true);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(id == null ? '添加成功' : '更新成功'),
-          backgroundColor: Colors.green,
-        ),
+      messenger.showSnackBar(
+        const SnackBar(content: Text('添加成功'), backgroundColor: Colors.green),
       );
     } catch (e) {
-      print('保存失败: $e');
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('操作失败，请检查网络'),
-          backgroundColor: Colors.redAccent,
-        ),
+      messenger.showSnackBar(
+        SnackBar(content: Text('添加失败: $e'), backgroundColor: Colors.red),
       );
     }
   }
 
-  // 💥 新增：快捷切换上下架
+  /// 2. 更新商品
+  Future<void> updateProduct(
+    int id,
+    String name,
+    double price,
+    int stock,
+    String desc,
+    bool isActive,
+    XFile? image,
+    BuildContext context,
+  ) async {
+    final messenger = ScaffoldMessenger.of(context); // ✨ 提前捕获
+    try {
+      await _api.updateProduct(id, name, price, stock, desc, isActive, image);
+      await fetchProducts(showLoading: true);
+      messenger.showSnackBar(
+        const SnackBar(content: Text('更新成功'), backgroundColor: Colors.green),
+      );
+    } catch (e) {
+      messenger.showSnackBar(
+        SnackBar(content: Text('更新失败: $e'), backgroundColor: Colors.red),
+      );
+    }
+  }
+
+  // 3. 快捷切换上下架
   Future<void> toggleProductStatus(
     int id,
     bool currentStatus,
     BuildContext context,
   ) async {
+    final messenger = ScaffoldMessenger.of(context); // ✨ 提前捕获
     final newStatus = !currentStatus;
 
-    // 💥 修复 3：使用强类型点语法 p.id
     final index = _allProducts.indexWhere((p) => p.id == id);
     if (index != -1) {
-      // 💥 修复 4：因为 Product 属性是 final 的，所以我们用一个“新对象”来替换旧对象实现乐观更新
       final old = _allProducts[index];
       _allProducts[index] = Product(
         id: old.id,
         name: old.name,
         price: old.price,
+        stock: old.stock,
         description: old.description,
-        isActive: newStatus, // 这里换成新状态
+        isActive: newStatus,
         imageUrl: old.imageUrl,
       );
       runFilter(_searchQuery);
@@ -131,27 +148,27 @@ class ProductProvider extends ChangeNotifier {
 
     try {
       await _api.toggleStatus(id, newStatus);
-      ScaffoldMessenger.of(context).showSnackBar(
+      messenger.showSnackBar(
         SnackBar(
           content: Text(newStatus ? '已上架' : '已下架'),
           duration: const Duration(seconds: 1),
         ),
       );
     } catch (e) {
-      // 💥 修复 5：失败回滚时，也同样替换成旧对象
       if (index != -1) {
         final old = _allProducts[index];
         _allProducts[index] = Product(
           id: old.id,
           name: old.name,
           price: old.price,
+          stock: old.stock,
           description: old.description,
-          isActive: currentStatus, // 回滚到旧状态
+          isActive: currentStatus,
           imageUrl: old.imageUrl,
         );
         runFilter(_searchQuery);
       }
-      ScaffoldMessenger.of(context).showSnackBar(
+      messenger.showSnackBar(
         const SnackBar(
           content: Text('状态切换失败'),
           backgroundColor: Colors.redAccent,
@@ -160,16 +177,17 @@ class ProductProvider extends ChangeNotifier {
     }
   }
 
-  /// 删除商品
+  /// 4. 删除商品
   Future<void> deleteProduct(int id, String name, BuildContext context) async {
+    final messenger = ScaffoldMessenger.of(context); // ✨ 提前捕获，彻底解决卡死和报错
     try {
       await _api.deleteProduct(id);
       await fetchProducts(showLoading: true);
-      ScaffoldMessenger.of(context).showSnackBar(
+      messenger.showSnackBar(
         SnackBar(content: Text('已删除: $name'), backgroundColor: Colors.orange),
       );
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
+      messenger.showSnackBar(
         const SnackBar(
           content: Text('删除失败'),
           backgroundColor: Colors.redAccent,

@@ -116,3 +116,51 @@ Content-Type: application/json
 {
   "is_active": true
 }
+
+### 测试用例 1：【正常购买】标准的黄金链路
+# 预期结果：返回 200 OK，包含 order_id、order_no 和正确的 total_amount。
+# 验证点：去数据库检查 orders 表总价是否正确，order_items 是否写入，products 表对应的商品库存是否正确扣减！
+POST {{baseUrl}}/orders
+Content-Type: application/json
+
+{
+  "payment_method": "wechat_pay",
+  "items": [
+    {
+      "products_id": 22, 
+      "quantity": 2
+    },
+    {
+      "products_id": 13,
+      "quantity": 1
+    }
+  ]
+}
+
+### 测试用例 2：【防御测试】防超卖与库存不足拦截
+# 假设商品 ID 为 22 的库存只有 10 件。
+# 预期结果：返回 400 Bad Request。
+# 验证点：系统必须优雅地抛出错误 {"success": false, "error": "Exception: 商品 [...] 库存不足"}，且数据库库存【绝对不能】变成负数。
+POST {{baseUrl}}/orders
+Content-Type: application/json
+
+{
+  "payment_method": "cash",
+  "items": [
+    {
+      "products_id": 22, 
+      "quantity": 9999 
+    }
+  ]
+}
+
+### 测试用例 3：【边界测试】空订单/脏数据拦截
+# 预期结果：返回 400 Bad Request。
+# 验证点：系统必须拦截没有 items 的请求，绝不能在数据库里生成金额为 0 的幽灵订单。
+POST {{baseUrl}}/orders
+Content-Type: application/json
+
+{
+  "payment_method": "cash",
+  "items": []
+}

@@ -30,6 +30,7 @@ class ApiService {
   Future<void> addProduct(
     String name,
     double price,
+    int stock,
     String desc,
     bool isActive,
     XFile? image,
@@ -37,6 +38,7 @@ class ApiService {
     FormData formData = FormData.fromMap({
       'name': name,
       'price': price,
+      'stock': stock,
       'description': desc,
       'is_active': isActive,
       if (image != null)
@@ -50,6 +52,7 @@ class ApiService {
     int id,
     String name,
     double price,
+    int stock,
     String desc,
     bool isActive,
     XFile? image,
@@ -58,6 +61,7 @@ class ApiService {
       'id': id,
       'name': name,
       'price': price,
+      'stock': stock,
       'description': desc,
       'is_active': isActive,
       if (image != null)

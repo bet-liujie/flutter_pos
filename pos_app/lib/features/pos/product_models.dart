@@ -4,6 +4,7 @@ class Product {
   final double price;
   final String description;
   final bool isActive;
+  final int stock;
   final String? imageUrl; // 图片可能是空的，所以加 ?
 
   Product({
@@ -12,6 +13,7 @@ class Product {
     required this.price,
     required this.description,
     required this.isActive,
+    required this.stock,
     this.imageUrl,
   });
 
@@ -27,10 +29,16 @@ class Product {
       }
     }
 
+    int parsedStock = 0;
+    if (json['stock'] != null) {
+      parsedStock = int.tryParse(json['stock'].toString()) ?? 0;
+    }
+
     return Product(
       id: json['id'] as int,
       name: json['name'] as String? ?? '未知商品',
-      price: parsedPrice, // 👈 使用解析好的安全数字
+      price: parsedPrice,
+      stock: parsedStock, // 👈 使用解析好的安全数字
       description: json['description'] as String? ?? '',
       isActive: json['is_active'] as bool? ?? true,
       imageUrl: json['image_url'] as String?,
@@ -45,6 +53,7 @@ class Product {
       'price': price,
       'description': description,
       'is_active': isActive,
+      'stock': stock,
       'image_url': imageUrl,
     };
   }
