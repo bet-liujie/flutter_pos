@@ -22,17 +22,18 @@ class CartProvider extends ChangeNotifier {
 
   // ==== 购物车操作逻辑 ====
 
-  /// 🌟 极简更新：返回 String? 作为错误信息，解耦 BuildContext
+  /// 极简更新：返回 String? 作为错误信息，解耦 BuildContext
   String? addItem(Product product) {
     if (!product.isActive) return '该商品已下架，无法购买';
 
     final currentQty = _items.containsKey(product.id)
         ? _items[product.id]!.quantity
         : 0;
-    if (currentQty >= product.stock)
+    if (currentQty >= product.stock) {
       return '【${product.name}】库存不足 (剩余: ${product.stock})';
+    }
 
-    // ✨ 优雅的 Map 更新语法，结合 copyWith
+    //优雅的 Map 更新语法，结合 copyWith
     _items.update(
       product.id,
       (existingItem) =>
@@ -56,6 +57,31 @@ class CartProvider extends ChangeNotifier {
       _items.remove(productId);
     }
     notifyListeners();
+  }
+
+  // 直接设置商品的指定数量 (用于弹窗手动输入)
+  String? setItemQuantity(Product product, int newQuantity) {
+    if (!product.isActive) return '该商品已下架，无法购买';
+
+    // 如果输入 <= 0，直接从购物车移除
+    if (newQuantity <= 0) {
+      removeProductCompletely(product.id);
+      return null;
+    }
+
+    // 校验是否超出最大可用库存
+    if (newQuantity > product.stock) {
+      return '【${product.name}】库存不足 (最大可用: ${product.stock})';
+    }
+
+    _items.update(
+      product.id,
+      (existingItem) => existingItem.copyWith(quantity: newQuantity),
+      ifAbsent: () => CartItem(product: product, quantity: newQuantity),
+    );
+
+    notifyListeners();
+    return null;
   }
 
   void removeProductCompletely(int productId) {
@@ -123,6 +149,7 @@ class CartProvider extends ChangeNotifier {
       final result = await _api.createOrder(
         payloadItems,
         paymentMethod: paymentMethod,
+        orderStatus: 'completed',
       );
       clearCart();
 

@@ -84,8 +84,13 @@ class ApiService {
   Future<Map<String, dynamic>> createOrder(
     List<Map<String, dynamic>> items, {
     String paymentMethod = 'cash',
+    String orderStatus = 'pending',
   }) async {
-    final payload = {'payment_method': paymentMethod, 'items': items};
+    final payload = {
+      'payment_method': paymentMethod,
+      'order_status': orderStatus,
+      'items': items,
+    };
 
     try {
       final response = await dio.post('/orders', data: payload);

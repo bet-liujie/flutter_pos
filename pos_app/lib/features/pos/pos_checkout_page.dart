@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
 import 'product_provider.dart';
@@ -14,10 +16,15 @@ class PosCheckoutPage extends StatefulWidget {
 }
 
 class _PosCheckoutPageState extends State<PosCheckoutPage> {
+  late final TextEditingController _searchCtrl;
+
+  // ✨ 需求 2：新增支付方式本地状态
+  String _selectedPaymentMethod = 'wechat_pay';
+
   @override
   void initState() {
     super.initState();
-    // 进入收银台时，主动拉取一次最新商品数据，并同步校验购物车
+    _searchCtrl = TextEditingController();
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       final productProvider = context.read<ProductProvider>();
       await productProvider.fetchProducts();
@@ -29,19 +36,10 @@ class _PosCheckoutPageState extends State<PosCheckoutPage> {
     });
   }
 
-  void _handleAddToCart(Product product) {
-    final cartProvider = context.read<CartProvider>();
-    final errorMsg = cartProvider.addItem(product);
-
-    if (errorMsg != null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(errorMsg),
-          backgroundColor: Colors.orange,
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-    }
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    super.dispose();
   }
 
   @override
@@ -63,7 +61,6 @@ class _PosCheckoutPageState extends State<PosCheckoutPage> {
         foregroundColor: Colors.black,
         elevation: 0.5,
         actions: [
-          // 跳转到商品管理后台的入口
           TextButton.icon(
             icon: const Icon(Icons.inventory),
             label: const Text('商品管理', style: TextStyle(fontSize: 16)),
@@ -75,79 +72,69 @@ class _PosCheckoutPageState extends State<PosCheckoutPage> {
       body: LayoutBuilder(
         builder: (context, constraints) {
           if (constraints.maxWidth >= 800) {
-            return _buildTabletLayout();
+            return Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(flex: 6, child: _buildProductSection(isMobile: false)),
+                const VerticalDivider(width: 1, color: Colors.grey),
+                Expanded(flex: 4, child: _buildCartPanel()),
+              ],
+            );
           } else {
-            return _buildMobileLayout();
+            return Column(
+              children: [
+                Expanded(child: _buildProductSection(isMobile: true)),
+                _buildMobileCartBar(),
+              ],
+            );
           }
         },
       ),
     );
   }
 
-  Widget _buildTabletLayout() {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Expanded(flex: 6, child: _buildProductSection(isMobile: false)),
-        const VerticalDivider(width: 1, color: Colors.grey),
-        Expanded(flex: 4, child: _buildCartPanel()),
-      ],
-    );
-  }
-
-  Widget _buildMobileLayout() {
-    return Column(
-      children: [
-        Expanded(child: _buildProductSection(isMobile: true)),
-        _buildMobileCartBar(),
-      ],
-    );
-  }
-
   // ================= 左侧：商品网格区 =================
   Widget _buildProductSection({required bool isMobile}) {
-    return Consumer<ProductProvider>(
-      builder: (context, provider, child) {
-        // 只展示已上架的商品
-        final activeProducts = provider.filteredProducts
-            .where((p) => p.isActive)
-            .toList();
-
-        if (provider.isLoading && activeProducts.isEmpty) {
-          return const Center(child: CircularProgressIndicator());
-        }
-        if (activeProducts.isEmpty) {
-          return const Center(
-            child: Text(
-              '暂无上架商品',
-              style: TextStyle(fontSize: 18, color: Colors.grey),
-            ),
-          );
-        }
-
-        return Column(
-          children: [
-            // 搜索栏
-            Container(
-              padding: const EdgeInsets.all(16),
-              color: Colors.white,
-              child: TextField(
-                onChanged: (val) => provider.runFilter(val),
-                decoration: InputDecoration(
-                  hintText: '搜索商品...',
-                  prefixIcon: const Icon(Icons.search),
-                  filled: true,
-                  fillColor: Colors.grey[100],
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide.none,
-                  ),
-                ),
+    return Column(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(16),
+          color: Colors.white,
+          child: TextField(
+            controller: _searchCtrl,
+            onChanged: (val) => context.read<ProductProvider>().runFilter(val),
+            decoration: InputDecoration(
+              hintText: '搜索商品...',
+              prefixIcon: const Icon(Icons.search),
+              filled: true,
+              fillColor: Colors.grey[100],
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide.none,
               ),
             ),
-            // 网格
-            Expanded(
-              child: GridView.builder(
+          ),
+        ),
+        Expanded(
+          child: Consumer<ProductProvider>(
+            builder: (context, productProvider, child) {
+              final activeProducts = productProvider.filteredProducts
+                  .where((p) => p.isActive)
+                  .toList();
+
+              if (productProvider.isLoading && activeProducts.isEmpty) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              if (activeProducts.isEmpty) {
+                return const Center(
+                  child: Text(
+                    '暂无上架商品',
+                    style: TextStyle(fontSize: 18, color: Colors.grey),
+                  ),
+                );
+              }
+
+              return GridView.builder(
                 padding: const EdgeInsets.all(16),
                 gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                   crossAxisCount: isMobile ? 2 : 4,
@@ -157,116 +144,15 @@ class _PosCheckoutPageState extends State<PosCheckoutPage> {
                 ),
                 itemCount: activeProducts.length,
                 itemBuilder: (context, index) {
-                  final product = activeProducts[index];
-                  final isOutOfStock = product.stock <= 0;
-
-                  return Card(
-                    elevation: 0,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      side: BorderSide(color: Colors.grey.shade200),
-                    ),
-                    clipBehavior: Clip.antiAlias,
-                    child: InkWell(
-                      onTap: isOutOfStock
-                          ? null
-                          : () => _handleAddToCart(product),
-                      child: Stack(
-                        children: [
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: [
-                              Expanded(
-                                flex: 3,
-                                child: product.imageUrl != null
-                                    ? Image.network(
-                                        product.imageUrl!,
-                                        fit: BoxFit.cover,
-                                        errorBuilder: (_, __, ___) =>
-                                            _fallbackIcon(),
-                                      )
-                                    : _fallbackIcon(),
-                              ),
-                              Expanded(
-                                flex: 2,
-                                child: Padding(
-                                  padding: const EdgeInsets.all(8.0),
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    mainAxisAlignment:
-                                        MainAxisAlignment.spaceBetween,
-                                    children: [
-                                      Text(
-                                        product.name,
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: const TextStyle(
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 16,
-                                        ),
-                                      ),
-                                      Text(
-                                        '¥ ${product.price.toStringAsFixed(2)}',
-                                        style: const TextStyle(
-                                          color: Colors.orangeAccent,
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 16,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                          // 库存角标
-                          Positioned(
-                            bottom: 8,
-                            right: 8,
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 6,
-                                vertical: 2,
-                              ),
-                              decoration: BoxDecoration(
-                                color: isOutOfStock
-                                    ? Colors.red
-                                    : (product.stock <= 10
-                                          ? Colors.orange
-                                          : Colors.green),
-                                borderRadius: BorderRadius.circular(4),
-                              ),
-                              child: Text(
-                                isOutOfStock ? '售罄' : '余 ${product.stock}',
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ),
-                          ),
-                          // 售罄遮罩
-                          if (isOutOfStock)
-                            Container(color: Colors.white.withOpacity(0.6)),
-                        ],
-                      ),
-                    ),
-                  );
+                  return ProductCardWidget(product: activeProducts[index]);
                 },
-              ),
-            ),
-          ],
-        );
-      },
+              );
+            },
+          ),
+        ),
+      ],
     );
   }
-
-  Widget _fallbackIcon() => Container(
-    color: Colors.grey[200],
-    child: const Icon(Icons.fastfood, color: Colors.grey, size: 40),
-  );
 
   // ================= 右侧：购物车面板 =================
   Widget _buildCartPanel() {
@@ -276,7 +162,6 @@ class _PosCheckoutPageState extends State<PosCheckoutPage> {
           color: Colors.white,
           child: Column(
             children: [
-              // 头部
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
@@ -305,7 +190,6 @@ class _PosCheckoutPageState extends State<PosCheckoutPage> {
                   ],
                 ),
               ),
-              // 列表
               Expanded(
                 child: cart.isEmpty
                     ? const Center(
@@ -317,9 +201,7 @@ class _PosCheckoutPageState extends State<PosCheckoutPage> {
                       )
                     : Builder(
                         builder: (context) {
-                          // ✨ 性能优化：在 builder 外部先将 Map 转换为 List，将时间复杂度从 O(n²) 降为 O(1)
                           final cartItemsList = cart.items.values.toList();
-
                           return ListView.separated(
                             itemCount: cartItemsList.length,
                             separatorBuilder: (_, __) =>
@@ -343,32 +225,70 @@ class _PosCheckoutPageState extends State<PosCheckoutPage> {
                                 trailing: Row(
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
-                                    IconButton(
-                                      icon: const Icon(
-                                        Icons.remove_circle_outline,
-                                        color: Colors.blue,
-                                      ),
-                                      onPressed: () =>
+                                    // ✨ 需求 1：替换为支持长按连发的减号按钮
+                                    ContinuousPressIcon(
+                                      icon: Icons.remove_circle_outline,
+                                      color: Colors.blue,
+                                      onTrigger: () =>
                                           cart.removeItemCount(item.product.id),
                                     ),
-                                    SizedBox(
-                                      width: 30,
-                                      child: Text(
-                                        '${item.quantity}',
-                                        textAlign: TextAlign.center,
-                                        style: const TextStyle(
-                                          fontSize: 16,
-                                          fontWeight: FontWeight.bold,
+
+                                    InkWell(
+                                      onTap: () => _showEditQuantityDialog(
+                                        context,
+                                        item.product,
+                                        item.quantity,
+                                      ),
+                                      borderRadius: BorderRadius.circular(4),
+                                      child: Container(
+                                        width: 40,
+                                        height: 30,
+                                        alignment: Alignment.center,
+                                        decoration: BoxDecoration(
+                                          border: Border.all(
+                                            color: Colors.blue.shade200,
+                                          ),
+                                          borderRadius: BorderRadius.circular(
+                                            4,
+                                          ),
+                                          color: Colors.blue.shade50,
+                                        ),
+                                        child: Text(
+                                          '${item.quantity}',
+                                          style: const TextStyle(
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.bold,
+                                            color: Colors.blue,
+                                          ),
                                         ),
                                       ),
                                     ),
-                                    IconButton(
-                                      icon: const Icon(
-                                        Icons.add_circle_outline,
-                                        color: Colors.blue,
-                                      ),
-                                      onPressed: () =>
-                                          _handleAddToCart(item.product),
+
+                                    // ✨ 需求 1：替换为支持长按连发的加号按钮
+                                    ContinuousPressIcon(
+                                      icon: Icons.add_circle_outline,
+                                      color: Colors.blue,
+                                      onTrigger: () {
+                                        final errorMsg = cart.addItem(
+                                          item.product,
+                                        );
+                                        if (errorMsg != null) {
+                                          // ✨ 防御性编程：发生错误前先清空堆积的 SnackBar，防止提示霸屏
+                                          ScaffoldMessenger.of(
+                                            context,
+                                          ).clearSnackBars();
+                                          ScaffoldMessenger.of(
+                                            context,
+                                          ).showSnackBar(
+                                            SnackBar(
+                                              content: Text(errorMsg),
+                                              backgroundColor: Colors.orange,
+                                              behavior:
+                                                  SnackBarBehavior.floating,
+                                            ),
+                                          );
+                                        }
+                                      },
                                     ),
                                   ],
                                 ),
@@ -378,7 +298,6 @@ class _PosCheckoutPageState extends State<PosCheckoutPage> {
                         },
                       ),
               ),
-              // 结算底部
               _buildCheckoutFooter(cart),
             ],
           ),
@@ -387,6 +306,7 @@ class _PosCheckoutPageState extends State<PosCheckoutPage> {
     );
   }
 
+  // ✨ 需求 2：重构的结算底部，带支付方式选择
   Widget _buildCheckoutFooter(CartProvider cart) {
     return Container(
       padding: const EdgeInsets.all(24),
@@ -420,7 +340,19 @@ class _PosCheckoutPageState extends State<PosCheckoutPage> {
               ),
             ],
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 16),
+
+          // 支付方式选择区
+          Wrap(
+            spacing: 12.0,
+            children: [
+              _buildPaymentChip('wechat_pay', '微信支付', Icons.wechat),
+              _buildPaymentChip('alipay', '支付宝', Icons.qr_code_scanner),
+              _buildPaymentChip('cash', '现金', Icons.money),
+            ],
+          ),
+
+          const SizedBox(height: 16),
           SizedBox(
             height: 60,
             child: ElevatedButton(
@@ -451,7 +383,33 @@ class _PosCheckoutPageState extends State<PosCheckoutPage> {
     );
   }
 
-  // 手机端底部悬浮条（用于弹出弹窗，这里暂时用简单的按钮替代，后续可完善 BottomSheet）
+  // 快捷生成支付标签组件
+  Widget _buildPaymentChip(String value, String label, IconData icon) {
+    final isSelected = _selectedPaymentMethod == value;
+    return ChoiceChip(
+      label: Text(
+        label,
+        style: TextStyle(
+          fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+        ),
+      ),
+      avatar: Icon(
+        icon,
+        size: 18,
+        color: isSelected ? Colors.blue : Colors.grey,
+      ),
+      selected: isSelected,
+      onSelected: (bool selected) {
+        if (selected) {
+          setState(() => _selectedPaymentMethod = value);
+        }
+      },
+      selectedColor: Colors.blue.shade50,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+      side: BorderSide(color: isSelected ? Colors.blue : Colors.grey.shade300),
+    );
+  }
+
   Widget _buildMobileCartBar() {
     return Consumer<CartProvider>(
       builder: (context, cart, child) {
@@ -516,23 +474,339 @@ class _PosCheckoutPageState extends State<PosCheckoutPage> {
 
   Future<void> _executeCheckout(CartProvider cart) async {
     final messenger = ScaffoldMessenger.of(context);
-    // ✨ 提前捕获 ProductProvider
     final productProvider = context.read<ProductProvider>();
 
-    final (success, msg) = await cart.checkout();
+    // ✨ 传入用户选择的支付方式
+    final (success, msg) = await cart.checkout(
+      paymentMethod: _selectedPaymentMethod,
+    );
 
     if (success) {
-      //  核心 Bug 修复：结算成功后，主动拉取最新库存，刷新左侧商品网格
       if (mounted) {
         await productProvider.fetchProducts();
       }
     }
 
+    messenger.clearSnackBars(); // 防止覆盖
     messenger.showSnackBar(
       SnackBar(
         content: Text(msg),
         backgroundColor: success ? Colors.green : Colors.red,
         behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
+  void _showEditQuantityDialog(
+    BuildContext context,
+    Product product,
+    int currentQty,
+  ) {
+    showDialog(
+      context: context,
+      builder: (ctx) =>
+          EditQuantityDialog(product: product, initialQty: currentQty),
+    );
+  }
+}
+
+// ================= 核心组件 1：极致局部刷新的商品卡片 =================
+class ProductCardWidget extends StatelessWidget {
+  final Product product;
+
+  const ProductCardWidget({super.key, required this.product});
+
+  void _showProductDetailsDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(product.name),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (product.imageUrl != null)
+              Center(
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: Image.network(
+                    product.imageUrl!,
+                    height: 120,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                  ),
+                ),
+              ),
+            const SizedBox(height: 16),
+            Text(
+              '💰 单价: ¥${product.price.toStringAsFixed(2)}',
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              '📦 库房总量: ${product.stock} 件',
+              style: const TextStyle(fontSize: 16),
+            ),
+            const Divider(),
+            const Text(
+              '📝 描述:',
+              style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              product.description.isEmpty ? '无商品描述' : product.description,
+              style: const TextStyle(fontSize: 14),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('关闭'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cartQty = context.select<CartProvider, int>(
+      (cart) => cart.items[product.id]?.quantity ?? 0,
+    );
+    final availableStock = product.stock - cartQty;
+    final isOutOfStock = availableStock <= 0;
+
+    return Card(
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: Colors.grey.shade200),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: isOutOfStock
+            ? null
+            : () {
+                final errorMsg = context.read<CartProvider>().addItem(product);
+                if (errorMsg != null) {
+                  ScaffoldMessenger.of(context).clearSnackBars(); // ✨ 防刷屏
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(errorMsg),
+                      backgroundColor: Colors.orange,
+                      behavior: SnackBarBehavior.floating,
+                    ),
+                  );
+                }
+              },
+        onLongPress: () => _showProductDetailsDialog(context),
+        child: Stack(
+          children: [
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Expanded(
+                  flex: 3,
+                  child: product.imageUrl != null
+                      ? Image.network(
+                          product.imageUrl!,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) => _fallbackIcon(),
+                        )
+                      : _fallbackIcon(),
+                ),
+                Expanded(
+                  flex: 2,
+                  child: Padding(
+                    padding: const EdgeInsets.all(8.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          product.name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                          ),
+                        ),
+                        Text(
+                          '¥ ${product.price.toStringAsFixed(2)}',
+                          style: const TextStyle(
+                            color: Colors.orangeAccent,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            Positioned(
+              bottom: 8,
+              right: 8,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: isOutOfStock
+                      ? Colors.red
+                      : (availableStock <= 10 ? Colors.orange : Colors.green),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Text(
+                  isOutOfStock ? '售罄' : '余 $availableStock',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ),
+            if (isOutOfStock) Container(color: Colors.white.withOpacity(0.6)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _fallbackIcon() => Container(
+    color: Colors.grey[200],
+    child: const Icon(Icons.fastfood, color: Colors.grey, size: 40),
+  );
+}
+
+// ================= 核心组件 2：安全的修改数量弹窗 =================
+class EditQuantityDialog extends StatefulWidget {
+  final Product product;
+  final int initialQty;
+
+  const EditQuantityDialog({
+    super.key,
+    required this.product,
+    required this.initialQty,
+  });
+
+  @override
+  State<EditQuantityDialog> createState() => _EditQuantityDialogState();
+}
+
+class _EditQuantityDialogState extends State<EditQuantityDialog> {
+  late final TextEditingController _ctrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = TextEditingController(text: widget.initialQty.toString());
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text('修改【${widget.product.name}】数量'),
+      content: TextField(
+        controller: _ctrl,
+        keyboardType: TextInputType.number,
+        inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+        autofocus: true,
+        decoration: const InputDecoration(
+          border: OutlineInputBorder(),
+          labelText: '购买数量',
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('取消', style: TextStyle(color: Colors.grey)),
+        ),
+        ElevatedButton(
+          onPressed: () {
+            final newQty = int.tryParse(_ctrl.text) ?? 0;
+            final cart = context.read<CartProvider>();
+            final errorMsg = cart.setItemQuantity(widget.product, newQty);
+
+            Navigator.of(context).pop();
+
+            if (errorMsg != null && context.mounted) {
+              ScaffoldMessenger.of(context).clearSnackBars();
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(errorMsg),
+                  backgroundColor: Colors.orange,
+                  behavior: SnackBarBehavior.floating,
+                ),
+              );
+            }
+          },
+          child: const Text('确定'),
+        ),
+      ],
+    );
+  }
+}
+
+// ================= 核心组件 3：长按连续触发按钮 (需求 1) =================
+class ContinuousPressIcon extends StatefulWidget {
+  final IconData icon;
+  final Color color;
+  final VoidCallback onTrigger;
+
+  const ContinuousPressIcon({
+    super.key,
+    required this.icon,
+    required this.color,
+    required this.onTrigger,
+  });
+
+  @override
+  State<ContinuousPressIcon> createState() => _ContinuousPressIconState();
+}
+
+class _ContinuousPressIconState extends State<ContinuousPressIcon> {
+  Timer? _timer;
+
+  void _startTimer() {
+    // 首次按下立即触发一次
+    widget.onTrigger();
+    // 延迟 300 毫秒后，开始每 100 毫秒连续触发（模拟操作系统的键位连发逻辑）
+    _timer = Timer(const Duration(milliseconds: 300), () {
+      _timer = Timer.periodic(const Duration(milliseconds: 100), (_) {
+        widget.onTrigger();
+      });
+    });
+  }
+
+  void _stopTimer() {
+    _timer?.cancel();
+    _timer = null;
+  }
+
+  @override
+  void dispose() {
+    _stopTimer();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTapDown: (_) => _startTimer(),
+      onTapUp: (_) => _stopTimer(),
+      onTapCancel: () => _stopTimer(),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
+        child: Icon(widget.icon, color: widget.color),
       ),
     );
   }

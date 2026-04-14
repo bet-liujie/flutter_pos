@@ -15,6 +15,17 @@ Future<Response> _createOrder(RequestContext context) async {
   final rawItems = (body['items'] as List<dynamic>?) ?? [];
   final paymentMethod = body['payment_method'] ?? 'unpaid';
 
+  // ✨ 架构升级：获取前端期望的订单状态，默认降级为 'pending' (保护顾客端)
+  final expectedStatus = body['order_status']?.toString() ?? 'pending';
+
+  // ✨ 防御性拦截：限制合法的状态机枚举，防止非法字符串注入
+  if (!['pending', 'completed', 'cancelled'].contains(expectedStatus)) {
+    return Response.json(
+      statusCode: 400,
+      body: {'success': false, 'error': '创建失败：非法的订单状态！'},
+    );
+  }
+
   if (rawItems.isEmpty) {
     return Response.json(
       statusCode: 400,
@@ -40,13 +51,18 @@ Future<Response> _createOrder(RequestContext context) async {
 
   try {
     final result = await pool.runTx((ctx) async {
+      // ✨ 架构升级：使用传入的动态状态 $3，不再硬编码 'pending'
       final orderResult = await ctx.execute(
         r'''
           INSERT INTO orders (order_no, total_amount, order_status, payment_method) 
-          VALUES ($1, 0, 'pending', $2) 
+          VALUES ($1, 0, $3, $2) 
           RETURNING id, order_no
         ''',
-        parameters: [orderNo, paymentMethod],
+        parameters: [
+          orderNo,
+          paymentMethod,
+          expectedStatus,
+        ], // 传入 expectedStatus
       );
 
       final newOrderId = orderResult[0][0]! as int;
