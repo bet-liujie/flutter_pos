@@ -2,171 +2,132 @@ import 'package:dart_frog/dart_frog.dart';
 import 'package:postgres/postgres.dart';
 
 Future<Response> onRequest(RequestContext context) async {
-  if (context.request.method == HttpMethod.post) {
-    return _createOrder(context);
-  }
+  if (context.request.method == HttpMethod.post) return _createOrder(context);
   return Response(statusCode: 405, body: 'Method Not Allowed');
 }
 
 Future<Response> _createOrder(RequestContext context) async {
   final body = await context.request.json() as Map<String, dynamic>;
-
-  // 这里的 items 需要指定类型以方便后续排序
   final rawItems = (body['items'] as List<dynamic>?) ?? [];
-  final paymentMethod = body['payment_method'] ?? 'unpaid';
+  final paymentMethod = body['payment_method'] ?? 'cash';
+  final expectedStatus = body['order_status']?.toString() ?? 'completed';
+  final idempotencyKey = body['idempotency_key']?.toString();
 
-  // ✨ 架构升级：获取前端期望的订单状态，默认降级为 'pending' (保护顾客端)
-  final expectedStatus = body['order_status']?.toString() ?? 'pending';
-
-  // ✨ 防御性拦截：限制合法的状态机枚举，防止非法字符串注入
-  if (!['pending', 'completed', 'cancelled'].contains(expectedStatus)) {
+  if (rawItems.isEmpty || idempotencyKey == null) {
     return Response.json(
       statusCode: 400,
-      body: {'success': false, 'error': '创建失败：非法的订单状态！'},
+      body: {'success': false, 'error': '必填参数缺失'},
     );
   }
 
-  if (rawItems.isEmpty) {
-    return Response.json(
-      statusCode: 400,
-      body: {'success': false, 'error': '创建失败：订单明细不能为空！'},
-    );
+  // 数据预处理：转换为强类型 Map，合并相同商品的数量（防御性编程：防止前端重复传同个 ID）
+  final itemQuantities = <int, int>{};
+  for (final item in rawItems) {
+    final id = int.parse(item['products_id'].toString());
+    final qty = int.parse(item['quantity'].toString());
+    itemQuantities[id] = (itemQuantities[id] ?? 0) + qty;
   }
-
-  // ✨ 防护 1：预防死锁 (Deadlock)。对输入商品按 ID 排序，保证并发时加锁的顺序始终一致。
-  final items = List<Map<String, dynamic>>.from(rawItems);
-  items.sort((a, b) {
-    final idA = int.parse(a['products_id'].toString());
-    final idB = int.parse(b['products_id'].toString());
-    return idA.compareTo(idB);
-  });
-
-  final now = DateTime.now();
-  final dateStr =
-      '${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}';
-  final orderNo =
-      'POS-$dateStr-${now.millisecondsSinceEpoch.toString().substring(9)}';
+  final productIds = itemQuantities.keys.toList();
 
   final pool = context.read<Pool>();
 
   try {
     final result = await pool.runTx((ctx) async {
-      // ✨ 架构升级：使用传入的动态状态 $3，不再硬编码 'pending'
+      // 1. 插入订单并校验幂等（UNIQUE 约束会自动拦截）
       final orderResult = await ctx.execute(
         r'''
-          INSERT INTO orders (order_no, total_amount, order_status, payment_method) 
-          VALUES ($1, 0, $3, $2) 
-          RETURNING id, order_no
+        INSERT INTO orders (order_no, total_amount, order_status, payment_method, idempotency_key)
+        VALUES ($1, 0, $3, $2, $4) RETURNING id, order_no
         ''',
         parameters: [
-          orderNo,
+          'POS-${DateTime.now().millisecondsSinceEpoch}',
           paymentMethod,
           expectedStatus,
-        ], // 传入 expectedStatus
+          idempotencyKey,
+        ],
+      );
+      final newOrderId = orderResult[0][0] as int;
+
+      // 2. 批量锁定并查询商品信息（解决 N+1 读）
+      final products = await ctx.execute(
+        r'SELECT id, name, price, stock, is_active FROM products WHERE id = ANY($1) FOR UPDATE',
+        parameters: [productIds],
       );
 
-      final newOrderId = orderResult[0][0]! as int;
-      final generatedOrderNo = orderResult[0][1]! as String;
-      num realTotalAmount = 0;
+      final productMap = {for (final r in products) r[0] as int: r};
+      num totalAmount = 0;
 
-      for (final item in items) {
-        final productsId = int.parse(item['products_id'].toString());
-        final quantity = int.parse(item['quantity'].toString());
+      // 3. 准备批量更新库存的数据（PostgreSQL CTE 技巧）
+      // 我们将使用 unnest 配合 UPDATE 来实现一次性更新所有行
+      final updateIds = <int>[];
+      final updateQtys = <int>[];
+      final insertItems = <List<dynamic>>[];
 
-        if (quantity <= 0) throw Exception('商品数量异常');
+      for (final id in productIds) {
+        final p = productMap[id];
+        if (p == null || !(p[4] as bool)) throw Exception('商品(ID:$id)不存在或已下架');
 
-        // ✨ 防护 2：使用 FOR UPDATE 施加悲观锁（排他锁），彻底杜绝并发超卖
-        final productCheck = await ctx.execute(
-          r'''
-            SELECT name, price, stock, is_active 
-            FROM products 
-            WHERE id = $1 AND is_deleted = FALSE 
-            FOR UPDATE
-          ''',
-          parameters: [productsId],
-        );
+        final qty = itemQuantities[id]!;
+        final stock = p[3] as int;
+        if (stock < qty) throw Exception('商品[${p[1]}]库存不足');
 
-        if (productCheck.isEmpty) {
-          throw Exception('商品不存在或已被删除 (ID: $productsId)');
-        }
+        final price = p[2] is num ? p[2] as num : num.parse(p[2].toString());
+        final subtotal = price * qty;
+        totalAmount += subtotal;
 
-        final realName = productCheck[0][0]! as String;
-        final rawPrice = productCheck[0][1];
-        final realPrice = rawPrice is num
-            ? rawPrice
-            : num.parse(rawPrice.toString());
-        final stock = productCheck[0][2]! as int;
-        final isActive = productCheck[0][3]! as bool;
-
-        if (!isActive) throw Exception('商品 [$realName] 已下架');
-        if (stock < quantity) {
-          throw Exception('商品 [$realName] 库存不足 (剩余: $stock)');
-        }
-
-        // ✨ 防护 3：不要在内存中算减法，让数据库用原子递减去执行，同时加上 stock >= 条件做双保险
-        final updateRes = await ctx.execute(
-          r'''
-            UPDATE products 
-            SET 
-              stock = stock - $1, 
-              is_active = (CASE WHEN stock - $1 = 0 THEN FALSE ELSE is_active END) 
-            WHERE id = $2 AND stock >= $1
-          ''',
-          parameters: [quantity, productsId],
-        );
-
-        // 如果受影响行数为0，说明在你更新的瞬间，库存被其他人改小了（虽然有 FOR UPDATE 一般不会走到这里，但这叫极致防御）
-        if (updateRes.affectedRows == 0) {
-          throw Exception('商品 [$realName] 库存扣减失败');
-        }
-
-        final secureSubtotal = quantity * realPrice;
-        realTotalAmount += secureSubtotal;
-
-        await ctx.execute(
-          r'''
-            INSERT INTO order_items 
-            (order_id, products_id, snapshot_name, snapshot_price, quantity, subtotal)
-            VALUES ($1, $2, $3, $4, $5, $6)
-          ''',
-          parameters: [
-            newOrderId,
-            productsId,
-            realName,
-            realPrice,
-            quantity,
-            secureSubtotal,
-          ],
-        );
+        updateIds.add(id);
+        updateQtys.add(qty);
+        insertItems.add([newOrderId, id, p[1], price, qty, subtotal]);
       }
 
+      // 4. ✨ 核心性能优化：单条 SQL 批量更新库存
       await ctx.execute(
-        r'UPDATE orders SET total_amount = $1 WHERE id = $2',
-        parameters: [realTotalAmount, newOrderId],
+        r'''
+        UPDATE products 
+        SET 
+          stock = stock - t.qty,
+          is_active = CASE WHEN stock - t.qty = 0 THEN FALSE ELSE is_active END
+        FROM (SELECT unnest($1::int[]) as id, unnest($2::int[]) as qty) AS t
+        WHERE products.id = t.id AND products.stock >= t.qty
+        ''',
+        parameters: [updateIds, updateQtys],
       );
 
-      return {
-        'id': newOrderId,
-        'orderNo': generatedOrderNo,
-        'realTotalAmount': realTotalAmount,
-      };
+      // 5. ✨ 核心性能优化：批量插入订单明细
+      // 使用 unnest 进行矩阵式插入，效率远高于循环 INSERT
+      await ctx.execute(
+        r'''
+        INSERT INTO order_items (order_id, products_id, snapshot_name, snapshot_price, quantity, subtotal)
+        SELECT $1, * FROM unnest($2::int[], $3::text[], $4::numeric[], $5::int[], $6::numeric[])
+        ''',
+        parameters: [
+          newOrderId,
+          insertItems.map((e) => e[1]).toList(), // products_id
+          insertItems.map((e) => e[2]).toList(), // name
+          insertItems.map((e) => e[3]).toList(), // price
+          insertItems.map((e) => e[4]).toList(), // quantity
+          insertItems.map((e) => e[5]).toList(), // subtotal
+        ],
+      );
+
+      // 6. 更新订单总额
+      await ctx.execute(
+        r'''UPDATE orders SET total_amount = $1 WHERE id = $2''',
+        parameters: [totalAmount, newOrderId],
+      );
+
+      return {'id': newOrderId, 'total': totalAmount};
     });
 
-    return Response.json(
-      body: {
-        'success': true,
-        'message': '订单创建成功',
-        'data': {
-          'order_id': result['id'],
-          'order_no': result['orderNo'],
-          'total_amount': result['realTotalAmount'],
-        },
-      },
-    );
+    return Response.json(body: {'success': true, 'data': result});
   } catch (e) {
+    // 针对商家的友好错误提示
+    final errorMsg = e.toString().contains('unique_violation')
+        ? '订单已存在，请勿重复结账'
+        : e.toString().replaceAll('Exception: ', '');
     return Response.json(
       statusCode: 400,
-      body: {'success': false, 'error': e.toString()},
+      body: {'success': false, 'error': errorMsg},
     );
   }
 }

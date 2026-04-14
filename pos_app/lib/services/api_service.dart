@@ -85,11 +85,13 @@ class ApiService {
     List<Map<String, dynamic>> items, {
     String paymentMethod = 'cash',
     String orderStatus = 'pending',
+    required String idempotencyKey, // 新增：强制要求传入幂等键
   }) async {
     final payload = {
       'payment_method': paymentMethod,
       'order_status': orderStatus,
       'items': items,
+      'idempotency_key': idempotencyKey, // 传递幂等键
     };
 
     try {

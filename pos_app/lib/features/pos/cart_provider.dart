@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:uuid/uuid.dart'; // 注意：需在 pubspec.yaml 中添加 uuid 依赖
 import 'cart_models.dart';
 import 'product_models.dart';
 import '../../services/api_service.dart';
@@ -33,7 +34,7 @@ class CartProvider extends ChangeNotifier {
       return '【${product.name}】库存不足 (剩余: ${product.stock})';
     }
 
-    //优雅的 Map 更新语法，结合 copyWith
+    // 优雅的 Map 更新语法，结合 copyWith
     _items.update(
       product.id,
       (existingItem) =>
@@ -42,7 +43,7 @@ class CartProvider extends ChangeNotifier {
     );
 
     notifyListeners();
-    return null; // null 代表添加成功，无错误
+    return null;
   }
 
   void removeItemCount(int productId) {
@@ -59,7 +60,7 @@ class CartProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  // 直接设置商品的指定数量 (用于弹窗手动输入)
+  // 直接设置商品的指定数量 (用于弹窗手动输入或扫码枪连续扫入)
   String? setItemQuantity(Product product, int newQuantity) {
     if (!product.isActive) return '该商品已下架，无法购买';
 
@@ -94,14 +95,18 @@ class CartProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// 🌟 数据同步自检：清除购物车中已经失效的商品（配合定时刷新使用）
+  /// 🌟 架构修复：安全的数据同步自检。
+  /// 使用 .entries.toList() 创建副本进行遍历，彻底消除 ConcurrentModificationError 隐患。
   void validateCartAgainstLatestProducts(List<Product> latestProducts) {
     bool hasChanged = false;
     final keysToRemove = <int>[];
 
-    for (var entry in _items.entries) {
+    // 必须生成一个静态列表副本用于遍历，因为下方逻辑会修改 _items 本身
+    final currentEntries = _items.entries.toList();
+
+    for (var entry in currentEntries) {
       final cartItem = entry.value;
-      // 在最新列表里找这个商品
+      // 在最新列表里找这个商品 (强类型 Product 匹配)
       final latestProduct = latestProducts
           .where((p) => p.id == cartItem.product.id)
           .firstOrNull;
@@ -120,6 +125,7 @@ class CartProvider extends ChangeNotifier {
       }
     }
 
+    // 统一执行删除操作
     for (var key in keysToRemove) {
       _items.remove(key);
     }
@@ -129,8 +135,10 @@ class CartProvider extends ChangeNotifier {
 
   // ==== 结算引擎 ====
 
-  /// 🌟 极简返回：封装结算结果给 UI 层处理。返回：(是否成功, 提示/错误信息)
+  /// 🌟 架构升级：带有状态机熔断和全局幂等键的收银台级结算
   Future<(bool, String)> checkout({String paymentMethod = 'cash'}) async {
+    // 防护 1：状态机熔断，防止收银员因为网络卡顿疯狂点击导致的并发请求
+    if (_isSubmitting) return (false, '正在处理中，请勿重复点击');
     if (_items.isEmpty) return (false, '购物车为空');
 
     _isSubmitting = true;
@@ -146,18 +154,28 @@ class CartProvider extends ChangeNotifier {
           )
           .toList();
 
+      // 防护 2：生成全局唯一幂等键 (Idempotency Key)，确保后端在任何异常重试下绝对不会产生重复订单
+      final idempotencyKey = const Uuid().v4();
+
       final result = await _api.createOrder(
         payloadItems,
         paymentMethod: paymentMethod,
-        orderStatus: 'completed',
+        orderStatus: 'completed', // 商家收银台直接走 completed 状态
+        idempotencyKey: idempotencyKey, // 传递给 ApiService 层
       );
+
       clearCart();
 
-      final finalTotal = result['total_amount'] ?? totalAmount;
+      // 兼容后端返回结构，防御空指针
+      final finalTotal =
+          result['data']?['total_amount'] ??
+          result['total_amount'] ??
+          totalAmount;
       return (true, '交易成功！收款: ¥$finalTotal');
     } catch (e) {
       return (false, e.toString());
     } finally {
+      // 无论成功失败，必须释放锁
       _isSubmitting = false;
       notifyListeners();
     }

@@ -15,21 +15,30 @@ class ProductProvider extends ChangeNotifier {
   Timer? _timer;
 
   ProductProvider() {
-    print('🚀 ProductProvider 初始化，启动定时器...');
+    print(' ProductProvider 初始化，启动定时器...');
     fetchProducts(showLoading: true);
 
     // 启动 5 秒一次的定时器
     _timer = Timer.periodic(const Duration(seconds: 5), (timer) {
-      print('⏰ 定时器触发：正在静默检查数据更新...');
+      print('定时器触发：正在静默检查数据更新...');
       fetchProducts(showLoading: false);
     });
   }
 
   @override
   void dispose() {
-    print('🛑 ProductProvider 被销毁，关闭定时器');
+    print(' ProductProvider 被销毁，关闭定时器');
     _timer?.cancel();
     super.dispose();
+  }
+
+  //  核心修复：清理残留的搜索状态
+  void clearSearch() {
+    if (_searchQuery.isNotEmpty) {
+      _searchQuery = '';
+      filteredProducts = _allProducts;
+      notifyListeners();
+    }
   }
 
   void runFilter(String query) {

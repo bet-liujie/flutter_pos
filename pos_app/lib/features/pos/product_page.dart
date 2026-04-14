@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart'; // ✨ 必须导入此包以使用 inputFormatters
 import 'package:provider/provider.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:go_router/go_router.dart';
@@ -17,6 +18,15 @@ class ProductPage extends StatefulWidget {
 class _ProductPageState extends State<ProductPage> {
   Product? _selectedProductForTablet;
   bool _isEditingTablet = false;
+
+  // ✨ 核心修复：进入页面时，强制清空从收银台带来的搜索状态
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      context.read<ProductProvider>().clearSearch();
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -655,13 +665,19 @@ class _ProductFormWidgetState extends State<ProductFormWidget> {
                     child: TextFormField(
                       controller: _stockCtrl,
                       keyboardType: TextInputType.number,
+                      // ✨ 核心修复：添加格式化器，在物理键盘层拦截小数点和符号输入
+                      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                       decoration: const InputDecoration(
                         labelText: '当前库存 *',
                         border: OutlineInputBorder(),
                         prefixIcon: Icon(Icons.inventory_2_outlined),
                       ),
-                      validator: (val) =>
-                          val == null || val.isEmpty ? '必填' : null,
+                      validator: (val) {
+                        if (val == null || val.isEmpty) return '必填';
+                        // ✨ 兜底逻辑校验
+                        if (int.tryParse(val) == null) return '请输入合法的整数';
+                        return null;
+                      },
                     ),
                   ),
                 ],
