@@ -23,6 +23,10 @@ class _ProductPageState extends State<ProductPage> {
     return Scaffold(
       backgroundColor: Colors.grey[100],
       appBar: AppBar(
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => context.pop(), // 返回收银台
+        ),
         // ✨ 修复 2：恢复双击标题解除激活状态的调试后门
         title: GestureDetector(
           onDoubleTap: () {
@@ -157,7 +161,7 @@ class _ProductPageState extends State<ProductPage> {
             ListView.separated(
               padding: const EdgeInsets.only(bottom: 80, top: 8),
               itemCount: provider.filteredProducts.length,
-              separatorBuilder: (_, __) => const Divider(height: 1),
+              separatorBuilder: (_, _) => const Divider(height: 1),
               itemBuilder: (context, index) {
                 final product = provider.filteredProducts[index];
                 final bool isSelectedTablet =
@@ -199,7 +203,7 @@ class _ProductPageState extends State<ProductPage> {
                             width: 50,
                             height: 50,
                             fit: BoxFit.cover,
-                            errorBuilder: (_, __, ___) => _fallbackIcon(),
+                            errorBuilder: (_, _, _) => _fallbackIcon(),
                           )
                         : _fallbackIcon(),
                   ),
@@ -682,7 +686,7 @@ class _ProductFormWidgetState extends State<ProductFormWidget> {
                 ),
                 subtitle: const Text('关闭后，收银台将无法搜索和购买此商品'),
                 value: _isActive,
-                activeColor: Colors.blue,
+                activeThumbColor: Colors.blue,
                 onChanged: (val) => setState(() => _isActive = val),
               ),
 

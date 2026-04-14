@@ -49,8 +49,8 @@ Future<Response> _createOrder(RequestContext context) async {
         parameters: [orderNo, paymentMethod],
       );
 
-      final newOrderId = orderResult[0][0] as int;
-      final generatedOrderNo = orderResult[0][1] as String;
+      final newOrderId = orderResult[0][0]! as int;
+      final generatedOrderNo = orderResult[0][1]! as String;
       num realTotalAmount = 0;
 
       for (final item in items) {
@@ -74,17 +74,18 @@ Future<Response> _createOrder(RequestContext context) async {
           throw Exception('商品不存在或已被删除 (ID: $productsId)');
         }
 
-        final realName = productCheck[0][0] as String;
+        final realName = productCheck[0][0]! as String;
         final rawPrice = productCheck[0][1];
         final realPrice = rawPrice is num
             ? rawPrice
             : num.parse(rawPrice.toString());
-        final stock = productCheck[0][2] as int;
-        final isActive = productCheck[0][3] as bool;
+        final stock = productCheck[0][2]! as int;
+        final isActive = productCheck[0][3]! as bool;
 
         if (!isActive) throw Exception('商品 [$realName] 已下架');
-        if (stock < quantity)
+        if (stock < quantity) {
           throw Exception('商品 [$realName] 库存不足 (剩余: $stock)');
+        }
 
         // ✨ 防护 3：不要在内存中算减法，让数据库用原子递减去执行，同时加上 stock >= 条件做双保险
         final updateRes = await ctx.execute(
@@ -99,8 +100,9 @@ Future<Response> _createOrder(RequestContext context) async {
         );
 
         // 如果受影响行数为0，说明在你更新的瞬间，库存被其他人改小了（虽然有 FOR UPDATE 一般不会走到这里，但这叫极致防御）
-        if (updateRes.affectedRows == 0)
+        if (updateRes.affectedRows == 0) {
           throw Exception('商品 [$realName] 库存扣减失败');
+        }
 
         final secureSubtotal = quantity * realPrice;
         realTotalAmount += secureSubtotal;

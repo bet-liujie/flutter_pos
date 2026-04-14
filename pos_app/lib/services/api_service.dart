@@ -79,4 +79,26 @@ class ApiService {
   Future<void> toggleStatus(int id, bool isActive) async {
     await dio.patch('/products/$id/status', data: {'is_active': isActive});
   }
+
+  // 5. 创建订单 (POST)
+  Future<Map<String, dynamic>> createOrder(
+    List<Map<String, dynamic>> items, {
+    String paymentMethod = 'cash',
+  }) async {
+    final payload = {'payment_method': paymentMethod, 'items': items};
+
+    try {
+      final response = await dio.post('/orders', data: payload);
+      if (response.statusCode == 200 && response.data['success'] == true) {
+        return response.data['data']; // 返回订单详情
+      } else {
+        throw Exception(response.data['error'] ?? '未知错误');
+      }
+    } on DioException catch (e) {
+      if (e.response != null && e.response?.data != null) {
+        throw Exception(e.response?.data['error'] ?? '网络请求失败');
+      }
+      throw Exception('网络连接异常');
+    }
+  }
 }

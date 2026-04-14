@@ -8,6 +8,7 @@ import 'features/pos/product_provider.dart';
 import 'core/router/app_router.dart';
 import 'features/activation/auth_provider.dart';
 import 'core/widgets/network_overlay.dart';
+import 'features/pos/cart_provider.dart';
 
 void main() async {
   // 确保 Flutter 引擎已启动
@@ -26,6 +27,7 @@ void main() async {
       providers: [
         ChangeNotifierProvider.value(value: authProvider),
         ChangeNotifierProvider(create: (_) => ProductProvider()),
+        ChangeNotifierProvider(create: (_) => CartProvider()),
       ],
       child: MyApp(router: appRouter),
     ),
