@@ -65,6 +65,7 @@ class ProductProvider extends ChangeNotifier {
     try {
       final newData = await _api.getProducts();
       // 💥 修复 2：把后端传来的 Map 列表，加工转换成 Product 对象列表
+      print('前端收到原始数据：$newData');
       _allProducts = newData.map((json) => Product.fromJson(json)).toList();
 
       errorMessage = null;

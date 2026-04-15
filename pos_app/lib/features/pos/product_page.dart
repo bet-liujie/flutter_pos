@@ -19,13 +19,28 @@ class _ProductPageState extends State<ProductPage> {
   Product? _selectedProductForTablet;
   bool _isEditingTablet = false;
 
-  // ✨ 核心修复：进入页面时，强制清空从收银台带来的搜索状态
+  late final ProductProvider _productProvider;
+  // 核心修复：进入页面时，强制清空从收银台带来的搜索状态
   @override
   void initState() {
     super.initState();
+    _productProvider = context.read<ProductProvider>();
+
+    // 进入页面时：清空可能残留的状态
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<ProductProvider>().clearSearch();
+      _productProvider.clearSearch();
     });
+  }
+
+  @override
+  void dispose() {
+    // 页面销毁（无论是因为点击返回按钮，还是安卓侧滑返回）时，彻底清空搜索状态。
+    // 技巧：使用 Future.microtask 延迟一微秒执行，防止在组件正在卸载时触发 Provider 的 notifyListeners() 导致崩溃报错。
+    Future.microtask(() {
+      _productProvider.clearSearch();
+    });
+
+    super.dispose();
   }
 
   @override
@@ -35,7 +50,11 @@ class _ProductPageState extends State<ProductPage> {
       appBar: AppBar(
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
-          onPressed: () => context.pop(), // 返回收银台
+          onPressed: () {
+            // 双保险：点击左上角返回时立即清空，让过渡动画更自然
+            _productProvider.clearSearch();
+            context.pop();
+          }, // 返回收银台
         ),
         // ✨ 修复 2：恢复双击标题解除激活状态的调试后门
         title: GestureDetector(
