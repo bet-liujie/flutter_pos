@@ -27,11 +27,12 @@ Future<Response> _createOrder(RequestContext context) async {
   for (final item in rawItems) {
     final id = int.parse(item['products_id'].toString());
     final qty = int.parse(item['quantity'].toString());
-    if (qty <= 0)
+    if (qty <= 0) {
       return Response.json(
         statusCode: 400,
         body: {'success': false, 'error': '恶意请求：商品数量不能为负数或0'},
       );
+    }
     itemQuantities[id] = (itemQuantities[id] ?? 0) + qty;
   }
   final productIds = itemQuantities.keys.toList();
@@ -64,19 +65,20 @@ Future<Response> _createOrder(RequestContext context) async {
         parameters: [...productIds, merchantId],
       );
 
-      if (products.length != productIds.length)
+      if (products.length != productIds.length) {
         throw Exception('检测到无效商品，可能存在跨商户越权或商品已被删除');
+      }
 
       final productMap = {
         for (final r in products) int.parse(r[0].toString()): r,
       };
-      double totalAmount = 0.0;
+      var totalAmount = 0.0;
 
       for (final id in productIds) {
         final p = productMap[id]!;
         final name = p[1].toString();
         final stock = int.parse(p[3].toString());
-        final isActive = p[4] as bool;
+        final isActive = p[4]! as bool;
         final qty = itemQuantities[id]!;
 
         // ✨ 业务底线 4：结账时的双保险
@@ -117,11 +119,12 @@ Future<Response> _createOrder(RequestContext context) async {
       },
     );
   } catch (e) {
-    if (e.toString().contains('unique constraint'))
+    if (e.toString().contains('unique constraint')) {
       return Response.json(
         statusCode: 409,
         body: {'success': false, 'error': '手速太快了，请勿重复结账'},
       );
+    }
     return Response.json(
       statusCode: 400,
       body: {

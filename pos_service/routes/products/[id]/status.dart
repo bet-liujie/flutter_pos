@@ -30,8 +30,8 @@ Future<Response> onRequest(RequestContext context, String id) async {
         );
       }
 
-      final stock = checkResult[0][0] as int;
-      final isDeleted = checkResult[0][1] as bool;
+      final stock = checkResult[0][0]! as int;
+      final isDeleted = checkResult[0][1]! as bool;
 
       // 2. 软删除校验
       if (isDeleted) {

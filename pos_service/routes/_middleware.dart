@@ -1,7 +1,6 @@
-import 'dart:io';
 import 'package:dart_frog/dart_frog.dart';
-import 'package:postgres/postgres.dart';
 import 'package:dotenv/dotenv.dart';
+import 'package:postgres/postgres.dart';
 
 // 全局变量，保证在服务器生命周期内单例运行
 Pool? _pool;

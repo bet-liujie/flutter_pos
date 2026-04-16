@@ -106,7 +106,7 @@ Future<Response> _deleteProduct(RequestContext context) async {
   } catch (e) {
     return Response.json(
       statusCode: 500,
-      body: {'success': false, 'error': '后端数据库异常: ${e.toString()}'},
+      body: {'success': false, 'error': '后端数据库异常: ${e}'},
     );
   }
 }
@@ -120,11 +120,12 @@ Future<Response> _addProduct(RequestContext context) async {
     final stock = int.tryParse(body['stock'].toString()) ?? 0;
     final isActive = body['is_active']?.toString() == 'true';
 
-    if (isActive && stock <= 0)
+    if (isActive && stock <= 0) {
       return Response.json(
         statusCode: 400,
         body: {'success': false, 'error': '库存为 0 时不允许上架'},
       );
+    }
 
     final result = await pool.execute(
       r'''
@@ -188,11 +189,12 @@ Future<Response> _updateProduct(RequestContext context) async {
       ],
     );
 
-    if (result.affectedRows == 0)
+    if (result.affectedRows == 0) {
       return Response.json(
         statusCode: 403,
         body: {'success': false, 'error': '无权修改该商品或商品不存在'},
       );
+    }
     return Response.json(body: {'success': true, 'message': '修改成功'});
   } catch (e) {
     return Response.json(

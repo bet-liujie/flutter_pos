@@ -204,7 +204,7 @@ class _PosCheckoutPageState extends State<PosCheckoutPage> {
                           final cartItemsList = cart.items.values.toList();
                           return ListView.separated(
                             itemCount: cartItemsList.length,
-                            separatorBuilder: (_, __) =>
+                            separatorBuilder: (_, _) =>
                                 const Divider(height: 1),
                             itemBuilder: (context, index) {
                               final item = cartItemsList[index];
@@ -533,7 +533,7 @@ class ProductCardWidget extends StatelessWidget {
                     product.imageUrl!,
                     height: 120,
                     fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                    errorBuilder: (_, _, _) => const SizedBox.shrink(),
                   ),
                 ),
               ),
@@ -624,7 +624,7 @@ class ProductCardWidget extends StatelessWidget {
                       ? Image.network(
                           product.imageUrl!,
                           fit: BoxFit.cover,
-                          errorBuilder: (_, __, ___) => _fallbackIcon(),
+                          errorBuilder: (_, _, _) => _fallbackIcon(),
                         )
                       : _fallbackIcon(),
                 ),

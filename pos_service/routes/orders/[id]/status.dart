@@ -2,8 +2,9 @@ import 'package:dart_frog/dart_frog.dart';
 import 'package:postgres/postgres.dart';
 
 Future<Response> onRequest(RequestContext context, String id) async {
-  if (context.request.method != HttpMethod.patch)
+  if (context.request.method != HttpMethod.patch) {
     return Response(statusCode: 405, body: 'Method Not Allowed');
+  }
 
   final pool = context.read<Pool>();
   final merchantId = context.read<int>();
@@ -21,25 +22,28 @@ Future<Response> onRequest(RequestContext context, String id) async {
         parameters: [productId, merchantId],
       );
 
-      if (checkResult.isEmpty)
+      if (checkResult.isEmpty) {
         return Response.json(
           statusCode: 403,
           body: {'success': false, 'error': '该商品不存在或无权操作'},
         );
+      }
 
       final stock = int.parse(checkResult[0][0].toString());
-      final isDeleted = checkResult[0][1] as bool;
+      final isDeleted = checkResult[0][1]! as bool;
 
-      if (isDeleted)
+      if (isDeleted) {
         return Response.json(
           statusCode: 400,
           body: {'success': false, 'error': '商品已被删除，无法上架'},
         );
-      if (stock <= 0)
+      }
+      if (stock <= 0) {
         return Response.json(
           statusCode: 400,
           body: {'success': false, 'error': '库存为 0，无法上架！'},
         );
+      }
     }
 
     // ✨ 业务底线 2：强制匹配商户 ID 的更新
@@ -48,11 +52,12 @@ Future<Response> onRequest(RequestContext context, String id) async {
       parameters: [isActive, productId, merchantId],
     );
 
-    if (updateResult.affectedRows == 0)
+    if (updateResult.affectedRows == 0) {
       return Response.json(
         statusCode: 403,
         body: {'success': false, 'error': '状态更新失败，可能是跨租户越权'},
       );
+    }
 
     return Response.json(body: {'success': true});
   } catch (e) {

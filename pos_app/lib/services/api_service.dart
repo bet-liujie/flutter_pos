@@ -41,10 +41,12 @@ class ApiService {
     try {
       final resp = await dio.get('/products');
       if (resp.data is Map) {
-        if (resp.data['success'] == true)
+        if (resp.data['success'] == true) {
           return List<Map<String, dynamic>>.from(resp.data['data'] ?? []);
-        if (resp.data.containsKey('items'))
+        }
+        if (resp.data.containsKey('items')) {
           return List<Map<String, dynamic>>.from(resp.data['items'] ?? []);
+        }
       }
       throw Exception('加载失败，返回格式未知');
     } on DioException catch (e) {
@@ -74,8 +76,9 @@ class ApiService {
           ),
       });
       final resp = await dio.post('/products', data: formData);
-      if (resp.data is Map && resp.data['success'] == false)
+      if (resp.data is Map && resp.data['success'] == false) {
         throw Exception(resp.data['error']);
+      }
     } on DioException catch (e) {
       throw Exception(_handleDioError(e));
     }
@@ -105,8 +108,9 @@ class ApiService {
           ),
       });
       final resp = await dio.put('/products', data: formData);
-      if (resp.data is Map && resp.data['success'] == false)
+      if (resp.data is Map && resp.data['success'] == false) {
         throw Exception(resp.data['error']);
+      }
     } on DioException catch (e) {
       throw Exception(_handleDioError(e));
     }
@@ -115,8 +119,9 @@ class ApiService {
   Future<void> deleteProduct(int id) async {
     try {
       final resp = await dio.delete('/products', queryParameters: {'id': id});
-      if (resp.data is Map && resp.data['success'] == false)
+      if (resp.data is Map && resp.data['success'] == false) {
         throw Exception(resp.data['error']);
+      }
     } on DioException catch (e) {
       throw Exception(_handleDioError(e));
     }
@@ -129,8 +134,9 @@ class ApiService {
         '/products/$id/status',
         data: {'is_active': isActive},
       );
-      if (resp.data is Map && resp.data['success'] == false)
+      if (resp.data is Map && resp.data['success'] == false) {
         throw Exception(resp.data['error']);
+      }
     } on DioException catch (e) {
       throw Exception(_handleDioError(e));
     }
@@ -150,8 +156,9 @@ class ApiService {
         'idempotency_key': idempotencyKey,
       };
       final response = await dio.post('/orders', data: payload);
-      if (response.statusCode == 200 && response.data['success'] == true)
+      if (response.statusCode == 200 && response.data['success'] == true) {
         return response.data['data'] ?? {};
+      }
       throw Exception(response.data['error'] ?? '未知错误');
     } on DioException catch (e) {
       if (e.response?.statusCode == 409) throw Exception('订单已存在，请勿重复结账');
