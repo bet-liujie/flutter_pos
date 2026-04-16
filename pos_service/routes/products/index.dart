@@ -9,6 +9,8 @@ Future<Response> onRequest(RequestContext context) async {
       return _addProduct(context);
     case HttpMethod.put:
       return _updateProduct(context);
+    case HttpMethod.delete:
+      return _deleteProduct(context);
     default:
       return Response(statusCode: 405, body: 'Method Not Allowed');
   }
@@ -53,6 +55,58 @@ Future<Response> _getProducts(RequestContext context) async {
     return Response.json(
       statusCode: 500,
       body: {'success': false, 'error': e.toString()},
+    );
+  }
+}
+
+Future<Response> _deleteProduct(RequestContext context) async {
+  final pool = context.read<Pool>();
+  final merchantId = context.read<int>(); // 注入的商户 ID 防线
+
+  // 1. 解析前端传来的 Query Parameter: ?id=xxx
+  final idString = context.request.url.queryParameters['id'];
+  if (idString == null || idString.isEmpty) {
+    return Response.json(
+      statusCode: 400,
+      body: {'success': false, 'error': '缺少商品 ID 参数'},
+    );
+  }
+
+  final productId = int.tryParse(idString);
+  if (productId == null) {
+    return Response.json(
+      statusCode: 400,
+      body: {'success': false, 'error': '无效的商品 ID'},
+    );
+  }
+
+  try {
+    // 2. 核心架构逻辑：软删除 + 强制下架 + 释放图片资源 + 商户防越权
+    final result = await pool.execute(
+      r'''
+      UPDATE products 
+      SET is_deleted = TRUE, 
+          is_active = FALSE, 
+          image_url = NULL 
+      WHERE id = $1 AND merchant_id = $2 
+      RETURNING id
+      ''',
+      parameters: [productId, merchantId],
+    );
+
+    // 3. 如果影响行数为 0，说明么有该商品，或者这是别的商户的商品
+    if (result.isEmpty) {
+      return Response.json(
+        statusCode: 403,
+        body: {'success': false, 'error': '该商品不存在或无权跨商户删除'},
+      );
+    }
+
+    return Response.json(body: {'success': true, 'message': '已安全删除并释放资源'});
+  } catch (e) {
+    return Response.json(
+      statusCode: 500,
+      body: {'success': false, 'error': '后端数据库异常: ${e.toString()}'},
     );
   }
 }

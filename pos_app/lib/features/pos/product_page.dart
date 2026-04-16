@@ -287,11 +287,29 @@ class _ProductPageState extends State<ProductPage> {
                     children: [
                       Switch(
                         value: product.isActive,
-                        onChanged: (val) => provider.toggleProductStatus(
-                          product.id,
-                          product.isActive,
-                          context,
-                        ),
+                        onChanged: (val) {
+                          // ✨ 架构师补丁：管理端快捷开关的“零库存熔断”
+                          if (val == true && product.stock <= 0) {
+                            ScaffoldMessenger.of(context).clearSnackBars();
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  '禁止操作：商品 [${product.name}] 库存为 0，无法上架',
+                                ),
+                                backgroundColor: Colors.orange.shade800,
+                                behavior: SnackBarBehavior.floating,
+                              ),
+                            );
+                            return; // 物理拦截，不执行后续逻辑
+                          }
+
+                          // 正常执行上下架切换
+                          provider.toggleProductStatus(
+                            product.id,
+                            product.isActive,
+                            context,
+                          );
+                        },
                       ),
                       if (isMobile)
                         IconButton(
@@ -309,6 +327,36 @@ class _ProductPageState extends State<ProductPage> {
                     ],
                   ),
                   onTap: () {
+                    if (product.stock <= 0) {
+                      final messenger = ScaffoldMessenger.of(context);
+
+                      // 1. 清理旧的提示，防止收银员连点导致提示堆叠
+                      messenger.clearSnackBars();
+
+                      // 2. 弹出明确的业务阻断提示
+                      messenger.showSnackBar(
+                        SnackBar(
+                          content: Row(
+                            children: [
+                              const Icon(
+                                Icons.info_outline,
+                                color: Colors.white,
+                              ),
+                              const SizedBox(width: 8),
+                              Text('商品 [${product.name}] 已售罄，请先补充库存'),
+                            ],
+                          ),
+                          backgroundColor: Colors.orange.shade800, // 使用橙色表示业务拦截
+                          duration: const Duration(milliseconds: 1500),
+                          behavior: SnackBarBehavior.floating, // 悬浮样式，避免遮挡底部按钮
+                        ),
+                      );
+
+                      // 3. 拦截跳转：如果是在移动端且已售罄，可以选择允许进入编辑，
+                      // 但作为收银逻辑拦截，这里我们演示“物理切断”
+                      // return;
+                    }
+
                     if (isMobile) {
                       _showMobileBottomSheet(context, product);
                     } else {

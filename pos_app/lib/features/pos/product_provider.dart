@@ -198,8 +198,8 @@ class ProductProvider extends ChangeNotifier {
       );
     } catch (e) {
       messenger.showSnackBar(
-        const SnackBar(
-          content: Text('删除失败'),
+        SnackBar(
+          content: Text('删除失败: ${e.toString().replaceAll('Exception: ', '')}'),
           backgroundColor: Colors.redAccent,
         ),
       );

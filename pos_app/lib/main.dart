@@ -14,7 +14,6 @@ void main() async {
   // 确保 Flutter 引擎已启动
   WidgetsFlutterBinding.ensureInitialized();
 
-  // 在渲染第一帧画面之前，先强制把硬盘数据读完！
   final prefs = await SharedPreferences.getInstance();
   final isActivated = prefs.getBool('is_device_activated') ?? false;
 

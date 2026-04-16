@@ -585,21 +585,33 @@ class ProductCardWidget extends StatelessWidget {
       ),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
-        onTap: isOutOfStock
-            ? null
-            : () {
-                final errorMsg = context.read<CartProvider>().addItem(product);
-                if (errorMsg != null) {
-                  ScaffoldMessenger.of(context).clearSnackBars(); // ✨ 防刷屏
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(errorMsg),
-                      backgroundColor: Colors.orange,
-                      behavior: SnackBarBehavior.floating,
-                    ),
-                  );
-                }
-              },
+        onTap: () {
+          if (isOutOfStock) {
+            // ✨ 解决你说的“无反应”：给出明确的视觉反馈
+            ScaffoldMessenger.of(context).clearSnackBars();
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('商品 [${product.name}] 已售罄，请及时补货'),
+                backgroundColor: Colors.orange.shade900,
+                behavior: SnackBarBehavior.floating,
+                duration: const Duration(milliseconds: 1500),
+              ),
+            );
+            return; // 拦截，不加入购物车
+          }
+          final errorMsg = context.read<CartProvider>().addItem(product);
+          if (errorMsg != null) {
+            ScaffoldMessenger.of(context).clearSnackBars(); // ✨ 防刷屏
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(errorMsg),
+                backgroundColor: Colors.orange,
+                behavior: SnackBarBehavior.floating,
+              ),
+            );
+          }
+        },
+
         onLongPress: () => _showProductDetailsDialog(context),
         child: Stack(
           children: [
