@@ -118,6 +118,7 @@ class MainActivity : FlutterActivity() {
 
     private fun Double.toBigDecimal(scale: Int) = java.math.BigDecimal(this).setScale(scale, java.math.RoundingMode.HALF_UP)
 
+    private fun handleGetBatteryInfo(result: MethodChannel.Result) {
         val batteryInfo = mutableMapOf<String, Any?>()
         try {
             val intent = registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))

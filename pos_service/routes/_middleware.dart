@@ -31,8 +31,19 @@ Handler middleware(Handler handler) {
     );
 
     // 3. ✨ SaaS 级 Token 拦截与多租户身份提取
+    // 激活码获取接口在设备激活前即可访问（此时尚无 token）
+    final requestPath = context.request.uri.path;
+    final isCodeRoute = requestPath == '/activate/code';
+
     final authHeader = context.request.headers['Authorization'];
     if (authHeader == null || !authHeader.startsWith('Bearer ')) {
+      if (isCodeRoute) {
+        // 激活码获取：无 token 时用默认 merchant_id 并放行
+        final injectedHandler = handler
+            .use(provider<Pool>((_) => _pool!))
+            .use(provider<int>((_) => 1001));
+        return await injectedHandler(context);
+      }
       return Response.json(
         statusCode: 401,
         body: {'success': false, 'error': '未授权访问，缺失 Token'},

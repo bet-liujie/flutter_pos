@@ -4,6 +4,8 @@ import 'package:provider/provider.dart';
 // 引入刚才创建的 AuthProvider
 import 'auth_provider.dart';
 import 'package:go_router/go_router.dart';
+import '../../services/api_service.dart';
+import '../../services/hardware_service.dart';
 
 class ActivationPage extends StatefulWidget {
   const ActivationPage({super.key});
@@ -16,6 +18,46 @@ class _ActivationPageState extends State<ActivationPage> {
   // 用于获取输入框里的激活码
   final TextEditingController _codeController = TextEditingController();
   bool _isLoading = false; // 控制加载状态（可选，用于优化体验）
+  bool _isFetchingCode = true; // 是否正在获取激活码
+  String? _fetchError;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchActivationCode();
+  }
+
+  /// 页面加载时自动获取激活码
+  Future<void> _fetchActivationCode() async {
+    setState(() {
+      _isFetchingCode = true;
+      _fetchError = null;
+    });
+
+    try {
+      final deviceId = await HardwareService.getDeviceId();
+      final deviceInfo = await HardwareService.getDeviceInfo();
+
+      final apiService = ApiService();
+      final result = await apiService.getActivationCode(
+        deviceId: deviceId,
+        manufacturer: deviceInfo['manufacturer'] ?? '',
+        model: deviceInfo['model'] ?? '',
+      );
+
+      if (!mounted) return;
+      _codeController.text = result['license_key'] ?? '';
+    } catch (e) {
+      if (!mounted) return;
+      _fetchError = '获取激活码失败: $e';
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isFetchingCode = false;
+        });
+      }
+    }
+  }
 
   // 处理激活逻辑
   Future<void> _handleActivation() async {
@@ -85,15 +127,44 @@ class _ActivationPageState extends State<ActivationPage> {
                     style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
                   ),
                   const SizedBox(height: 32),
-                  // 激活码输入框
+                  // 激活码输入框（自动获取，只读）
                   TextField(
                     controller: _codeController,
-                    decoration: const InputDecoration(
+                    readOnly: true,
+                    decoration: InputDecoration(
                       labelText: '设备激活码',
-                      border: OutlineInputBorder(),
-                      prefixIcon: Icon(Icons.key),
+                      border: const OutlineInputBorder(),
+                      prefixIcon: const Icon(Icons.key),
+                      suffixIcon: _isFetchingCode
+                          ? const Padding(
+                              padding: EdgeInsets.all(12),
+                              child: SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(strokeWidth: 2),
+                              ),
+                            )
+                          : _fetchError != null
+                              ? IconButton(
+                                  icon: const Icon(Icons.refresh),
+                                  onPressed: _fetchActivationCode,
+                                )
+                              : const Icon(Icons.check_circle, color: Colors.green),
                     ),
                   ),
+                  if (_fetchError != null) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      _fetchError!,
+                      style: const TextStyle(color: Colors.red, fontSize: 12),
+                    ),
+                    const SizedBox(height: 8),
+                    TextButton.icon(
+                      onPressed: _fetchActivationCode,
+                      icon: const Icon(Icons.refresh),
+                      label: const Text('重新获取'),
+                    ),
+                  ],
                   const SizedBox(height: 24),
                   // 激活按钮
                   SizedBox(

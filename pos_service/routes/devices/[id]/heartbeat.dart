@@ -100,11 +100,19 @@ Future<Response> _heartbeat(RequestContext context, String deviceId) async {
       ],
     );
 
-    // 更新设备最后活跃时间
-    await pool.execute(
+    // 更新或自动注册设备
+    final updateResult = await pool.execute(
       'UPDATE devices SET last_active_at = CURRENT_TIMESTAMP WHERE device_id = \$1 AND merchant_id = \$2',
       parameters: [deviceId, merchantId],
     );
+
+    if (updateResult.affectedRows == 0) {
+      // 设备不存在，自动注册（降低测试门槛）
+      await pool.execute(
+        'INSERT INTO devices (device_id, merchant_id, status, last_active_at) VALUES (\$1, \$2, \'active\', CURRENT_TIMESTAMP) ON CONFLICT (device_id) DO UPDATE SET last_active_at = CURRENT_TIMESTAMP',
+        parameters: [deviceId, merchantId],
+      );
+    }
 
     return Response.json(body: {
       'success': true,

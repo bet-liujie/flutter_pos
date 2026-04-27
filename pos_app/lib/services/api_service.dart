@@ -165,4 +165,25 @@ class ApiService {
       throw Exception(_handleDioError(e));
     }
   }
+
+  /// 获取设备激活码（硬件信息 → 后端生成）
+  Future<Map<String, dynamic>> getActivationCode({
+    required String deviceId,
+    String manufacturer = '',
+    String model = '',
+  }) async {
+    try {
+      final resp = await dio.post('/activate/code', data: {
+        'device_id': deviceId,
+        'manufacturer': manufacturer,
+        'model': model,
+      });
+      if (resp.data['success'] == true) {
+        return Map<String, dynamic>.from(resp.data['data']);
+      }
+      throw Exception(resp.data['error'] ?? '获取激活码失败');
+    } on DioException catch (e) {
+      throw Exception(_handleDioError(e));
+    }
+  }
 }
