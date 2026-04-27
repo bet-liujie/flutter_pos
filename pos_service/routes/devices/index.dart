@@ -58,15 +58,16 @@ Future<Response> _getDevices(RequestContext context) async {
         d.merchant_id,
         d.status,
         d.last_active_at,
-        h.battery_level,
         h.storage_usage,
         h.memory_usage,
         h.network_type,
         h.app_version,
+        h.latitude,
+        h.longitude,
         h.reported_at AS last_heartbeat_at
       FROM devices d
       LEFT JOIN LATERAL (
-        SELECT battery_level, storage_usage, memory_usage, network_type, app_version, reported_at
+        SELECT storage_usage, memory_usage, network_type, app_version, latitude, longitude, reported_at
         FROM heartbeat_log
         WHERE device_id = d.device_id
         ORDER BY reported_at DESC
@@ -80,7 +81,7 @@ Future<Response> _getDevices(RequestContext context) async {
     );
 
     final devices = result.map((row) {
-      final lastHeartbeat = row[9] as DateTime?;
+      final lastHeartbeat = row[10] as DateTime?;
       final isOnline = lastHeartbeat != null &&
           DateTime.now().difference(lastHeartbeat).inMinutes < 5;
       return {
@@ -88,12 +89,13 @@ Future<Response> _getDevices(RequestContext context) async {
         'merchant_id': row[1],
         'status': row[2],
         'last_active_at': row[3]?.toString(),
-        'battery_level': row[4],
-        'storage_usage': row[5],
-        'memory_usage': row[6],
-        'network_type': row[7],
-        'app_version': row[8],
-        'last_heartbeat_at': row[9]?.toString(),
+        'storage_usage': row[4],
+        'memory_usage': row[5],
+        'network_type': row[6],
+        'app_version': row[7],
+        'latitude': row[8],
+        'longitude': row[9],
+        'last_heartbeat_at': row[10]?.toString(),
         'online': isOnline,
       };
     }).toList();

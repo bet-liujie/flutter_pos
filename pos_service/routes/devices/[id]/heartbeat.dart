@@ -85,18 +85,17 @@ Future<Response> _heartbeat(RequestContext context, String deviceId) async {
     final body = await context.request.json() as Map<String, dynamic>;
 
     await pool.execute(
-      'INSERT INTO heartbeat_log (device_id, merchant_id, battery_level, battery_temp, storage_usage, memory_usage, network_type, signal_strength, app_version, is_charging) VALUES (\$1, \$2, \$3, \$4, \$5, \$6, \$7, \$8, \$9, \$10)',
+      'INSERT INTO heartbeat_log (device_id, merchant_id, storage_usage, memory_usage, network_type, signal_strength, app_version, latitude, longitude) VALUES (\$1, \$2, \$3, \$4, \$5, \$6, \$7, \$8, \$9)',
       parameters: [
         deviceId,
         merchantId,
-        body['battery_level'],
-        body['battery_temp'],
         body['storage_usage'],
         body['memory_usage'],
         body['network_type'],
         body['signal_strength'],
         body['app_version'],
-        body['is_charging'],
+        body['latitude'],
+        body['longitude'],
       ],
     );
 

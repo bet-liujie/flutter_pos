@@ -135,11 +135,11 @@ See `pos_service/api_test.http` for complete examples.
 - `POST /orders` - Create order with items array and idempotency_key
 
 ### MDM / Device Management
-- `GET /devices` - List devices with pagination, status filter, online status (from heartbeat)
+- `GET /devices` - List devices with pagination, status filter, online status (from heartbeat), latest location
 - `GET /devices/<id>` - Device detail with bound policies and pending commands
 - `PUT /devices/<id>` - Update device status (active/suspended/lost/retired)
 - `DELETE /devices/<id>` - Unbind device
-- `POST /devices/<id>/heartbeat` - Device heartbeat report (battery, storage, network, etc.)
+- `POST /devices/<id>/heartbeat` - Device heartbeat report (storage, memory, network, GPS location)
 - `GET /devices/<id>/heartbeat` - Poll for pending commands and policy sync
 - `POST /devices/<id>/commands` - Send remote command (lock_screen, reboot, enable_kiosk, etc.)
 - `GET /devices/<id>/commands` - Query command execution history
@@ -154,6 +154,7 @@ Tables include:
 - `products`: name, price, stock, description, is_active, is_deleted, image_url, merchant_id
 - `orders`: order_no, total_amount, order_status, payment_method, idempotency_key, merchant_id
 - `order_items`: order_id, products_id, snapshot_name, snapshot_price, quantity, subtotal
+- `heartbeat_log`: device heartbeat records with storage, network status, GPS location (latitude/longitude) (MDM)
 - `device_policies`: policy definitions with JSONB policy_data, versioned (MDM)
 - `policy_bindings`: policy-device binding with sync status (MDM)
 - `command_queue`: remote command queue pending→sent→completed/failed (MDM)
@@ -164,7 +165,7 @@ All tables have `merchant_id` for tenant isolation.
 ## Migrations
 
 - `migrations/001_initial.sql`: Base tables (products, orders, devices, licenses)
-- `migrations/002_mdm_tables.sql`: MDM tables (device_policies, policy_bindings, command_queue, heartbeat_log)
+- `migrations/003_remove_battery_add_location.sql`: Remove battery fields, add GPS location (latitude, longitude) to heartbeat_log
 
 ## Code Organization
 

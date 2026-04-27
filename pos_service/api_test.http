@@ -175,19 +175,18 @@ GET {{baseUrl}}/devices
 ### 2. 设备详情
 GET {{baseUrl}}/devices/POS001
 
-### 3. 心跳上报
+### 3. 心跳上报 (移除电量，添加位置)
 POST {{baseUrl}}/devices/POS001/heartbeat
 Content-Type: application/json
 
 {
-  "battery_level": 85,
-  "battery_temp": 36.5,
   "storage_usage": 45.2,
   "memory_usage": 62.1,
   "network_type": "wifi",
   "signal_strength": -65,
   "app_version": "1.0.0",
-  "is_charging": true
+  "latitude": 22.5431,
+  "longitude": 114.0579
 }
 
 ### 4. 设备轮询 (获取待执行命令)

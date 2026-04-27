@@ -32,26 +32,38 @@ Future<Response> _activateDevice(RequestContext context) async {
 
     // 开启数据库事务，确保两表操作的原子性
     return await pool.runTx((session) async {
-      // 1. 查验授权码：必须是 unused 状态
+      // 1. 查验授权码：必须是 unused 状态，或者已绑定到当前设备（允许重激活）
       final licenseResult = await session.execute(
-        r"SELECT merchant_id FROM licenses WHERE license_key = $1 AND status = 'unused'",
+        r"SELECT merchant_id, status, bound_device_id FROM licenses WHERE license_key = $1",
         parameters: [licenseKey],
       );
 
       if (licenseResult.isEmpty) {
         return Response.json(
           statusCode: 400,
-          body: {'success': false, 'error': '无效的授权码或已被使用'},
+          body: {'success': false, 'error': '无效的授权码'},
         );
       }
 
-      final merchantId = licenseResult[0][0].toString();
+      final row = licenseResult[0];
+      final merchantId = row[0].toString();
+      final licenseStatus = row[1] as String;
+      final boundDeviceId = row[2] as String?;
 
-      // 2. 核销授权码：标记为已使用，并打上当前设备的物理烙印
-      await session.execute(
-        r"UPDATE licenses SET status = 'used', bound_device_id = $1 WHERE license_key = $2",
-        parameters: [deviceId, licenseKey],
-      );
+      if (licenseStatus == 'used' && boundDeviceId != deviceId) {
+        return Response.json(
+          statusCode: 400,
+          body: {'success': false, 'error': '授权码已被其他设备使用'},
+        );
+      }
+
+      if (licenseStatus == 'unused') {
+        // 2. 核销授权码：标记为已使用，并打上当前设备的物理烙印
+        await session.execute(
+          r"UPDATE licenses SET status = 'used', bound_device_id = $1 WHERE license_key = $2",
+          parameters: [deviceId, licenseKey],
+        );
+      }
 
       // 3. 将设备写入/更新到受信任白名单库
       // 使用 ON CONFLICT，确保测试阶段即使重复录入也能平滑覆盖

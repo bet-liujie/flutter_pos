@@ -6,6 +6,7 @@ import 'package:device_info_plus/device_info_plus.dart';
 import 'package:android_intent_plus/android_intent.dart';
 import 'package:android_intent_plus/flag.dart';
 import 'package:dio/dio.dart';
+import 'package:geolocator/geolocator.dart';
 
 /// MDM服务 - 仅在Android平台生效
 /// 通过 MethodChannel 调用原生 DevicePolicyManager API
@@ -48,6 +49,9 @@ class MdmService {
     _deviceId = info.id;
     _appVersion = '1.0.0'; // TODO: 从 package_info_plus 获取
 
+    // 提前请求位置权限（Activity 前台时），避免心跳定时器触发时弹窗
+    await _requestLocationPermission();
+
     // 启动定时器，每 60 秒上报一次心跳
     _heartbeatTimer?.cancel();
     _heartbeatTimer = Timer.periodic(
@@ -69,21 +73,20 @@ class MdmService {
     if (!isAndroid || _deviceId == null) return;
 
     try {
-      final batteryInfo = await getBatteryInfo();
+      final location = await _getLocation();
       final storageInfo = await _getStorageInfo();
       final networkType = _getNetworkType();
 
       await _dio.post(
         '/devices/$_deviceId/heartbeat',
         data: {
-          'battery_level': batteryInfo['level'],
-          'battery_temp': batteryInfo['temperature'],
           'storage_usage': storageInfo['storage_usage'],
           'memory_usage': storageInfo['memory_usage'],
           'network_type': networkType,
-          'signal_strength': null, // TODO: 通过原生获取WiFi信号强度
+          'signal_strength': null,
           'app_version': _appVersion,
-          'is_charging': batteryInfo['is_charging'],
+          'latitude': location['latitude'],
+          'longitude': location['longitude'],
         },
       );
     } catch (e) {
@@ -108,6 +111,51 @@ class MdmService {
   String _getNetworkType() {
     // TODO: 通过 connectivity_plus 获取实际网络类型
     return 'wifi';
+  }
+
+  /// 获取设备位置（GPS坐标）
+  /// 收银机固定位置，获取一次后缓存，避免频繁GPS唤醒
+  Future<Map<String, double?>> _getLocation() async {
+    if (!isAndroid) return {'latitude': null, 'longitude': null};
+
+    try {
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        debugPrint('位置服务未开启');
+        return {'latitude': null, 'longitude': null};
+      }
+
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied ||
+          permission == LocationPermission.deniedForever) {
+        debugPrint('位置权限未授予');
+        return {'latitude': null, 'longitude': null};
+      }
+
+      final pos = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.low, // 收银机位置固定，低精度省电
+          timeLimit: Duration(seconds: 10),
+        ),
+      );
+
+      return {'latitude': pos.latitude, 'longitude': pos.longitude};
+    } catch (e) {
+      debugPrint('获取位置失败: $e');
+      return {'latitude': null, 'longitude': null};
+    }
+  }
+
+  /// 在 Activity 前台时提前请求位置权限
+  Future<void> _requestLocationPermission() async {
+    try {
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        await Geolocator.requestPermission();
+      }
+    } catch (e) {
+      debugPrint('请求位置权限失败: $e');
+    }
   }
 
   /// 检查是否为Android平台
