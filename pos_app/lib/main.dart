@@ -9,6 +9,7 @@ import 'core/router/app_router.dart';
 import 'features/activation/auth_provider.dart';
 import 'core/widgets/network_overlay.dart';
 import 'features/pos/cart_provider.dart';
+import 'services/mdm_service.dart';
 
 void main() async {
   // 确保 Flutter 引擎已启动
@@ -16,6 +17,15 @@ void main() async {
 
   final prefs = await SharedPreferences.getInstance();
   final isActivated = prefs.getBool('is_device_activated') ?? false;
+
+  // 初始化MDM服务（仅在Android平台生效）
+  final mdmService = MdmService();
+  if (mdmService.isAndroid) {
+    final deviceInfo = await mdmService.getDeviceInfo();
+    debugPrint('MDM设备信息: $deviceInfo');
+    // 启动心跳上报
+    await mdmService.initHeartbeat(baseUrl: 'http://192.168.43.251:8080');
+  }
 
   // 将明确的真实状态传给 AuthProvider
   final authProvider = AuthProvider(initialStatus: isActivated);

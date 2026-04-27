@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -61,6 +63,13 @@ class _PosCheckoutPageState extends State<PosCheckoutPage> {
         foregroundColor: Colors.black,
         elevation: 0.5,
         actions: [
+          // 仅在Android平台显示MDM管理按钮
+          if (!kIsWeb && Platform.isAndroid)
+            TextButton.icon(
+              icon: const Icon(Icons.admin_panel_settings),
+              label: const Text('设备管理', style: TextStyle(fontSize: 16)),
+              onPressed: () => context.push('/mdm'),
+            ),
           TextButton.icon(
             icon: const Icon(Icons.inventory),
             label: const Text('商品管理', style: TextStyle(fontSize: 16)),

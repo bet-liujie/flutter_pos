@@ -1,0 +1,202 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Project Overview
+
+This is a multi-tenant SaaS POS (Point of Sale) system built with Flutter (frontend) and Dart Frog (backend). The architecture consists of three main packages:
+
+- **pos_app**: Flutter mobile application for POS operations with MDM (Mobile Device Management) support on Android
+- **pos_service**: Dart Frog backend API server with PostgreSQL, includes MDM backend (device management, heartbeat, remote commands)
+- **pos_share**: Shared code/models (currently empty)
+
+### MDM Features (Android Only)
+The Flutter app includes MDM capabilities that are only active on Android devices:
+- Device information retrieval (manufacturer, model, Android version)
+- Screen lock functionality via DevicePolicyManager
+- Kiosk mode (lock task mode) support
+- Quick access to system settings (WiFi, device admin, app settings)
+- Automatic heartbeat reporting (battery, storage, network status every 60s)
+- Remote command pull (lock_screen, reboot, enable_kiosk, etc.)
+- Platform-aware UI (MDM features hidden on non-Android platforms)
+
+## Architecture
+
+### Multi-Tenancy Model
+The backend implements tenant isolation at the middleware level (`pos_service/routes/_middleware.dart`):
+- JWT tokens are extracted from `Authorization: Bearer <token>` headers
+- `merchant_id` is decoded from the token and injected into the request context
+- All database queries are scoped by `merchant_id` to prevent cross-tenant data access
+- Test tokens: `test-token-123` (merchant 1001), `test-token-456` (merchant 1002)
+
+### Database Connection
+- PostgreSQL connection pool is initialized in `_middleware.dart`
+- Configuration is loaded from `.env` file in `pos_service/`
+- Connection pool is injected into request context for all routes
+
+### Frontend State Management
+- Uses Provider pattern for state management
+- Key providers:
+  - `AuthProvider`: Device activation status
+  - `ProductProvider`: Product catalog management
+  - `CartProvider`: Shopping cart state
+- Routing with `go_router` with activation-based redirects
+
+### API Communication
+- `ApiService` (pos_app/lib/services/api_service.dart) handles all HTTP requests
+- Base URL: `http://192.168.43.251:8080` (hardcoded for local network)
+- All requests automatically include `Authorization: Bearer test-token-123`
+- Custom error handling extracts Chinese error messages from backend responses
+
+## Development Commands
+
+### Backend (pos_service)
+```bash
+cd pos_service
+
+# Start development server (hot reload enabled)
+dart_frog dev
+
+# Run tests
+dart test
+
+# Build for production
+dart_frog build
+
+# The server runs on port 8080 by default
+```
+
+### Frontend (pos_app)
+```bash
+cd pos_app
+
+# Install dependencies
+flutter pub get
+
+# Run on connected device/emulator
+flutter run
+
+# Build APK
+flutter build apk
+
+# Run tests
+flutter test
+```
+
+## Key Business Logic
+
+### Device Activation
+- License-based activation flow (`POST /activate`)
+- Transaction-based: validates license, marks as used, registers device atomically
+- License states: `unused` → `used` (one-time use per license)
+- Licenses table tracks `bound_device_id` after activation
+- Devices table maintains whitelist with `device_id`, `merchant_id`, `status`
+- Uses `ON CONFLICT` for idempotent device registration during testing
+- Frontend blocks POS features until device is activated
+
+### Product Management
+- Soft delete pattern: `is_deleted` flag instead of hard deletes
+- Products have `is_active` flag for temporary on/off shelf control
+- Business rule: Cannot set `is_active=true` when `stock=0`
+- Image uploads supported via multipart/form-data
+
+### Order Creation
+- Idempotency key required to prevent duplicate orders
+- Transaction-based with row-level locking (`FOR UPDATE`)
+- Stock validation happens during checkout
+- Order items snapshot product name/price at time of purchase
+- Supports multiple payment methods: cash, wechat, alipay
+
+### Security Patterns
+- All routes protected by token authentication in middleware
+- Merchant ID extracted from token, never from request body
+- Database queries always include `merchant_id` filter
+- Concurrent order safety via PostgreSQL transactions
+
+## API Endpoints
+
+See `pos_service/api_test.http` for complete examples.
+
+### Activation
+- `POST /activate` - Activate device with license_key and device_id
+
+### Products
+- `GET /products` - List all active products for merchant
+- `POST /products` - Create product (supports multipart for images)
+- `PUT /products` - Update product
+- `DELETE /products?id=<id>` - Soft delete product
+- `PATCH /products/<id>/status` - Toggle is_active status
+
+### Orders
+- `POST /orders` - Create order with items array and idempotency_key
+
+### MDM / Device Management
+- `GET /devices` - List devices with pagination, status filter, online status (from heartbeat)
+- `GET /devices/<id>` - Device detail with bound policies and pending commands
+- `PUT /devices/<id>` - Update device status (active/suspended/lost/retired)
+- `DELETE /devices/<id>` - Unbind device
+- `POST /devices/<id>/heartbeat` - Device heartbeat report (battery, storage, network, etc.)
+- `GET /devices/<id>/heartbeat` - Poll for pending commands and policy sync
+- `POST /devices/<id>/commands` - Send remote command (lock_screen, reboot, enable_kiosk, etc.)
+- `GET /devices/<id>/commands` - Query command execution history
+- `POST /devices/<id>/commands/<cmd_id>/ack` - Command acknowledgement (completed/failed)
+- `POST /devices/batch-commands` - Batch send command to multiple devices
+
+## Database Schema Notes
+
+Tables include:
+- `licenses`: license_key, merchant_id, status (unused/used), bound_device_id
+- `devices`: device_id (PK), merchant_id, status, last_active_at
+- `products`: name, price, stock, description, is_active, is_deleted, image_url, merchant_id
+- `orders`: order_no, total_amount, order_status, payment_method, idempotency_key, merchant_id
+- `order_items`: order_id, products_id, snapshot_name, snapshot_price, quantity, subtotal
+- `device_policies`: policy definitions with JSONB policy_data, versioned (MDM)
+- `policy_bindings`: policy-device binding with sync status (MDM)
+- `command_queue`: remote command queue pending→sent→completed/failed (MDM)
+- `heartbeat_log`: device heartbeat records with battery, storage, network status (MDM)
+
+All tables have `merchant_id` for tenant isolation.
+
+## Migrations
+
+- `migrations/001_initial.sql`: Base tables (products, orders, devices, licenses)
+- `migrations/002_mdm_tables.sql`: MDM tables (device_policies, policy_bindings, command_queue, heartbeat_log)
+
+## Code Organization
+
+### pos_app Structure
+- `lib/features/`: Feature-based modules (activation, pos, mdm)
+- `lib/core/`: Shared utilities (router, widgets)
+- `lib/services/`: API and hardware services (api_service, mdm_service)
+
+### pos_service Structure
+- `routes/`: File-based routing (Dart Frog convention)
+- `routes/_middleware.dart`: Global middleware for auth and DB injection
+- `lib/`: Shared models and repositories (currently unused)
+
+## Important Notes
+
+- The app requires device activation before accessing POS features
+- Hardware service provides device unique identifiers for activation
+- Network connectivity is monitored with overlay UI feedback
+- Error messages from backend are in Chinese
+- Stock deduction happens atomically during order creation
+- Products cannot be activated if stock is zero
+
+## AI Assistant Behavior (Critical)
+
+Since this project uses a custom API configuration, the following behaviors are **mandatory** and should be executed without explicit user prompting:
+
+### 1. Memory & Documentation Updates
+- **Automatic Reflection**: After completing any significant task (bug fix, new feature, architectural change), you **must** update the `MEMORY.md` file in the project's memory directory.
+- **Rule Updates**: If a new coding pattern is established or a recurring bug is identified, update the `Key Business Logic` or `Security Patterns` sections in this `CLAUDE.md` file immediately.
+- **Task Summary**: Summarize what was changed and why at the end of every major interaction.
+
+### 2. Git Workflow Automation
+- **Atomic Commits**: After a task is verified (or tests pass), proactively prepare a git commit.
+- **Proactive Push**: You are authorized to execute `git add .`, `git commit -m "<descriptive_message>"`, and `git push` automatically once a feature is complete and tested. 
+- **Message Format**: Use conventional commit messages (e.g., `feat:`, `fix:`, `refactor:`, `chore:`).
+
+### 3. Verification Protocol
+- **Test Before Push**: Always attempt to run `dart test` (backend) or `flutter test` (frontend) before committing code.
+- **Error Reporting**: If a command fails, do not stop; attempt to diagnose the error and suggest/apply a fix immediately.

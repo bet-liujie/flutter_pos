@@ -164,3 +164,72 @@ Content-Type: application/json
   "payment_method": "cash",
   "items": []
 }
+
+### =========================================
+### MDM 模块 (Devices) - 设备管理与心跳
+### =========================================
+
+### 1. 设备列表
+GET {{baseUrl}}/devices
+
+### 2. 设备详情
+GET {{baseUrl}}/devices/POS001
+
+### 3. 心跳上报
+POST {{baseUrl}}/devices/POS001/heartbeat
+Content-Type: application/json
+
+{
+  "battery_level": 85,
+  "battery_temp": 36.5,
+  "storage_usage": 45.2,
+  "memory_usage": 62.1,
+  "network_type": "wifi",
+  "signal_strength": -65,
+  "app_version": "1.0.0",
+  "is_charging": true
+}
+
+### 4. 设备轮询 (获取待执行命令)
+GET {{baseUrl}}/devices/POS001/heartbeat
+
+### 5. 下发远程命令
+POST {{baseUrl}}/devices/POS001/commands
+Content-Type: application/json
+
+{
+  "command": "lock_screen",
+  "params": {}
+}
+
+### 6. 查询命令状态
+GET {{baseUrl}}/devices/POS001/commands
+
+### 7. 命令确认
+POST {{baseUrl}}/devices/POS001/commands/1/ack
+Content-Type: application/json
+
+{
+  "status": "completed"
+}
+
+### 8. 批量下发命令
+POST {{baseUrl}}/devices/batch-commands
+Content-Type: application/json
+
+{
+  "device_ids": ["POS001", "POS002"],
+  "command": "reboot",
+  "params": {"message": "设备将在5分钟后重启"}
+}
+
+### 9. 修改设备状态
+PUT {{baseUrl}}/devices/POS001
+Content-Type: application/json
+
+{
+  "status": "suspended"
+}
+
+### 10. 解绑设备
+DELETE {{baseUrl}}/devices/POS001

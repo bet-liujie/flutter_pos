@@ -3,6 +3,7 @@ import 'package:pos_app/features/activation/activation_page.dart';
 import 'package:pos_app/features/pos/pos_checkout_page.dart'; // 引入收银台
 import 'package:pos_app/features/pos/product_page.dart'; // 引入商品管理
 import 'package:pos_app/features/activation/auth_provider.dart';
+import 'package:pos_app/features/mdm/mdm_management_page.dart'; // 引入MDM管理页面
 
 GoRouter createRouter(AuthProvider authProvider) {
   return GoRouter(
@@ -37,6 +38,11 @@ GoRouter createRouter(AuthProvider authProvider) {
       GoRoute(
         path: '/products',
         builder: (context, state) => const ProductPage(),
+      ),
+      // 新增MDM设备管理页面的路由
+      GoRoute(
+        path: '/mdm',
+        builder: (context, state) => const MdmManagementPage(),
       ),
     ],
   );
