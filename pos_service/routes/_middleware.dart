@@ -2,6 +2,26 @@ import 'package:dart_frog/dart_frog.dart';
 import 'package:dotenv/dotenv.dart';
 import 'package:postgres/postgres.dart';
 
+// CORS 头
+const _corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+};
+
+Handler _addCorsHeaders(Handler handler) {
+  return (context) async {
+    if (context.request.method == HttpMethod.options) {
+      return Response(headers: _corsHeaders);
+    }
+    final response = await handler(context);
+    return response.copyWith(headers: {
+      ...response.headers,
+      ..._corsHeaders,
+    });
+  };
+}
+
 // 全局变量，保证在服务器生命周期内单例运行
 Pool? _pool;
 late DotEnv _env;
@@ -10,35 +30,35 @@ Handler middleware(Handler handler) {
   // 1. 在中间件初始化时加载环境变量
   _env = DotEnv(includePlatformEnvironment: true)..load();
 
-  return (context) async {
-    // 2. 懒加载初始化数据库连接池 (读取 .env)
+  // 2. 外层包裹 CORS 支持
+  return _addCorsHeaders((context) async {
+    // 3. 懒加载初始化数据库连接池 (读取 .env)
     _pool ??= Pool.withEndpoints(
       [
         Endpoint(
           host: _env['DB_HOST'] ?? 'localhost',
           port: int.parse(_env['DB_PORT'] ?? '5432'),
           database: _env['DB_NAME'] ?? 'pos_db',
-          username: _env['DB_USER'], // ✨ 正确位置：账号写在 Endpoint 里
-          password: _env['DB_PASSWORD'], // ✨ 正确位置：密码写在 Endpoint 里
+          username: _env['DB_USER'],
+          password: _env['DB_PASSWORD'],
         ),
       ],
       settings: PoolSettings(
         sslMode: SslMode.disable,
         maxConnectionCount: int.parse(
           _env['DB_MAX_CONNECTIONS'] ?? '10',
-        ), // ✨ 正确参数名
+        ),
       ),
     );
 
-    // 3. ✨ SaaS 级 Token 拦截与多租户身份提取
-    // 激活码获取接口在设备激活前即可访问（此时尚无 token）
+    // 4. SaaS 级 Token 拦截与多租户身份提取
     final requestPath = context.request.uri.path;
     final isCodeRoute = requestPath == '/activate/code';
+    final isAdminLogin = requestPath == '/admin/login';
 
     final authHeader = context.request.headers['Authorization'];
     if (authHeader == null || !authHeader.startsWith('Bearer ')) {
-      if (isCodeRoute) {
-        // 激活码获取：无 token 时用默认 merchant_id 并放行
+      if (isCodeRoute || isAdminLogin) {
         final injectedHandler = handler
             .use(provider<Pool>((_) => _pool!))
             .use(provider<int>((_) => 1001));
@@ -54,12 +74,12 @@ Handler middleware(Handler handler) {
     int currentMerchantId;
 
     try {
-      // TODO: 商业项目中，这里需要用 dart_jsonwebtoken 之类的包验证签名并解出 payload
-      // 现在的核心架构思想是：merchant_id 绝对不能由前端随便传，必须由后端在这里从加密 Token 里解析出来！
       if (token == 'test-token-123') {
-        currentMerchantId = 1001; // 解析出：商户 A
+        currentMerchantId = 1001;
       } else if (token == 'test-token-456') {
-        currentMerchantId = 1002; // 解析出：商户 B
+        currentMerchantId = 1002;
+      } else if (token == 'admin-token-001') {
+        currentMerchantId = 1001;
       } else {
         throw Exception('Invalid Token');
       }
@@ -70,12 +90,11 @@ Handler middleware(Handler handler) {
       );
     }
 
-    // 4. 将 数据库 Pool 和 解析出的 merchantId 一起注入到 Context 中
+    // 5. 将数据库 Pool 和 merchantId 注入 Context
     final injectedHandler = handler
         .use(provider<Pool>((_) => _pool!))
-        .use(provider<int>((_) => currentMerchantId)); // ✨ 向后传递商户 ID
+        .use(provider<int>((_) => currentMerchantId));
 
-    // 放行请求到具体的 Route (例如 index.dart)
     return await injectedHandler(context);
-  };
+  });
 }
