@@ -35,10 +35,11 @@ Future<Response> _pollDevice(RequestContext context, String deviceId) async {
     if (commands.isNotEmpty) {
       final ids = commandsResult.map((c) => c[0] as int).toList();
       // postgres 3.x 不支持 ANY(\$1) 传数组，逐条更新
+      final utcNow = DateTime.now().toUtc().toIso8601String();
       for (final id in ids) {
         await pool.execute(
-          "UPDATE command_queue SET status = 'sent', sent_at = CURRENT_TIMESTAMP WHERE id = \$1",
-          parameters: [id],
+          "UPDATE command_queue SET status = 'sent', sent_at = \$2 WHERE id = \$1",
+          parameters: [id, utcNow],
         );
       }
     }
@@ -60,12 +61,13 @@ Future<Response> _pollDevice(RequestContext context, String deviceId) async {
       };
     }
 
+    final utcNow = DateTime.now().toUtc().toIso8601String();
     return Response.json(body: {
       'success': true,
       'data': {
         'commands': commands,
         'policy': pendingPolicy,
-        'sync_at': DateTime.now().toIso8601String(),
+        'sync_at': utcNow,
       },
     });
   } catch (e) {
@@ -83,9 +85,10 @@ Future<Response> _heartbeat(RequestContext context, String deviceId) async {
 
   try {
     final body = await context.request.json() as Map<String, dynamic>;
+    final utcNow = DateTime.now().toUtc().toIso8601String();
 
     await pool.execute(
-      'INSERT INTO heartbeat_log (device_id, merchant_id, storage_usage, memory_usage, network_type, signal_strength, app_version, latitude, longitude) VALUES (\$1, \$2, \$3, \$4, \$5, \$6, \$7, \$8, \$9)',
+      'INSERT INTO heartbeat_log (device_id, merchant_id, storage_usage, memory_usage, network_type, signal_strength, app_version, latitude, longitude, reported_at) VALUES (\$1, \$2, \$3, \$4, \$5, \$6, \$7, \$8, \$9, \$10)',
       parameters: [
         deviceId,
         merchantId,
@@ -96,27 +99,28 @@ Future<Response> _heartbeat(RequestContext context, String deviceId) async {
         body['app_version'],
         body['latitude'],
         body['longitude'],
+        utcNow,
       ],
     );
 
     // 更新或自动注册设备
     final updateResult = await pool.execute(
-      'UPDATE devices SET last_active_at = CURRENT_TIMESTAMP WHERE device_id = \$1 AND merchant_id = \$2',
-      parameters: [deviceId, merchantId],
+      'UPDATE devices SET last_active_at = \$1 WHERE device_id = \$2 AND merchant_id = \$3',
+      parameters: [utcNow, deviceId, merchantId],
     );
 
     if (updateResult.affectedRows == 0) {
       // 设备不存在，自动注册（降低测试门槛）
       await pool.execute(
-        'INSERT INTO devices (device_id, merchant_id, status, last_active_at) VALUES (\$1, \$2, \'active\', CURRENT_TIMESTAMP) ON CONFLICT (device_id) DO UPDATE SET last_active_at = CURRENT_TIMESTAMP',
-        parameters: [deviceId, merchantId],
+        'INSERT INTO devices (device_id, merchant_id, status, last_active_at) VALUES (\$1, \$2, \'active\', \$3) ON CONFLICT (device_id) DO UPDATE SET last_active_at = \$3',
+        parameters: [deviceId, merchantId, utcNow],
       );
     }
 
     return Response.json(body: {
       'success': true,
       'message': '心跳上报成功',
-      'server_time': DateTime.now().toIso8601String(),
+      'server_time': utcNow,
     });
   } catch (e) {
     return Response.json(

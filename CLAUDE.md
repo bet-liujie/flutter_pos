@@ -19,6 +19,7 @@ The Flutter app includes MDM capabilities that are only active on Android device
 - Automatic heartbeat reporting (battery, storage, network status every 60s)
 - Remote command pull (lock_screen, reboot, enable_kiosk, etc.)
 - Platform-aware UI (MDM features hidden on non-Android platforms)
+- Device Owner (DPC) support via adb (`dpm set-device-owner`): uninstall blocking, keyguard/status bar disable, lock task whitelist, user restrictions, factory reset
 
 ## Architecture
 
@@ -154,18 +155,20 @@ Tables include:
 - `products`: name, price, stock, description, is_active, is_deleted, image_url, merchant_id
 - `orders`: order_no, total_amount, order_status, payment_method, idempotency_key, merchant_id
 - `order_items`: order_id, products_id, snapshot_name, snapshot_price, quantity, subtotal
-- `heartbeat_log`: device heartbeat records with storage, network status, GPS location (latitude/longitude) (MDM)
+- `heartbeat_log`: device heartbeat records with storage, network status, GPS location (latitude/longitude), reported_at (timestamptz) (MDM)
 - `device_policies`: policy definitions with JSONB policy_data, versioned (MDM)
 - `policy_bindings`: policy-device binding with sync status (MDM)
 - `command_queue`: remote command queue pending→sent→completed/failed (MDM)
-- `heartbeat_log`: device heartbeat records with battery, storage, network status (MDM)
 
 All tables have `merchant_id` for tenant isolation.
+Key timestamp columns (heartbeat_log.reported_at, devices.last_active_at, devices.created_at) use timestamptz to avoid timezone ambiguity.
 
 ## Migrations
 
 - `migrations/001_initial.sql`: Base tables (products, orders, devices, licenses)
-- `migrations/003_remove_battery_add_location.sql`: Remove battery fields, add GPS location (latitude, longitude) to heartbeat_log
+- `migrations/002_mdm_tables.sql`: MDM tables (device_policies, policy_bindings, command_queue, heartbeat_log)
+- `migrations/003_remove_battery_add_location.sql`: Remove battery fields, add GPS location to heartbeat_log
+- `migrations/004_use_timestamptz.sql`: Change key timestamp columns to timestamptz for correct timezone handling
 
 ## Code Organization
 

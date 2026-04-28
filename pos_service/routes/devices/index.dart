@@ -83,7 +83,7 @@ Future<Response> _getDevices(RequestContext context) async {
     final devices = result.map((row) {
       final lastHeartbeat = row[10] as DateTime?;
       final isOnline = lastHeartbeat != null &&
-          DateTime.now().difference(lastHeartbeat).inMinutes < 5;
+          DateTime.now().toUtc().difference(lastHeartbeat.toUtc()).inMinutes < 5;
       return {
         'device_id': row[0],
         'merchant_id': row[1],

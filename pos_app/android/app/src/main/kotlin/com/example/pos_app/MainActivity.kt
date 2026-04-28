@@ -22,9 +22,11 @@ class MainActivity : FlutterActivity() {
 
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL).setMethodCallHandler { call, result ->
             val dpm = getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
-            val componentName = ComponentName(this, DeviceAdminReceiver::class.java)
+            val componentName = DeviceAdminReceiver.getComponentName(this)
+            val args = call.arguments as? Map<String, Any?> ?: emptyMap()
 
             when (call.method) {
+                // === Device Admin 基础能力 ===
                 "lockScreen" -> handleLockScreen(dpm, componentName, result)
                 "hasDeviceAdminPermission" -> handleHasAdmin(dpm, componentName, result)
                 "requestDeviceAdminPermission" -> handleRequestAdmin(result)
@@ -33,10 +35,24 @@ class MainActivity : FlutterActivity() {
                 "disableKioskMode" -> handleDisableKiosk(result)
                 "getBatteryInfo" -> handleGetBatteryInfo(result)
                 "getStorageInfo" -> handleGetStorageInfo(result)
+
+                // === Device Owner 能力 ===
+                "isDeviceOwner" -> handleIsDeviceOwner(dpm, result)
+                "setLockTaskPackages" -> handleSetLockTaskPackages(dpm, componentName, args, result)
+                "isLockTaskAllowed" -> handleIsLockTaskAllowed(dpm, args, result)
+                "setUninstallBlocked" -> handleSetUninstallBlocked(dpm, componentName, args, result)
+                "setKeyguardDisabled" -> handleSetKeyguardDisabled(dpm, componentName, args, result)
+                "setStatusBarDisabled" -> handleSetStatusBarDisabled(dpm, componentName, args, result)
+                "addUserRestriction" -> handleAddUserRestriction(dpm, componentName, args, result)
+                "removeUserRestriction" -> handleClearUserRestriction(dpm, componentName, args, result)
+                "wipeData" -> handleWipeData(dpm, result)
+
                 else -> result.notImplemented()
             }
         }
     }
+
+    // ========== Device Admin 方法（已有） ==========
 
     private fun handleLockScreen(
         dpm: DevicePolicyManager,
@@ -59,10 +75,8 @@ class MainActivity : FlutterActivity() {
         dpm: DevicePolicyManager,
         componentName: ComponentName,
         result: MethodChannel.Result
-    ): Boolean {
-        val isAdmin = dpm.isAdminActive(componentName)
-        result.success(isAdmin)
-        return isAdmin
+    ) {
+        result.success(dpm.isAdminActive(componentName))
     }
 
     private fun handleRequestAdmin(result: MethodChannel.Result) {
@@ -130,7 +144,7 @@ class MainActivity : FlutterActivity() {
 
                 val batteryPct = if (level >= 0 && scale > 0) level * 100 / scale else 0
                 batteryInfo["level"] = batteryPct
-                batteryInfo["temperature"] = temperature / 10.0     // 原始值单位0.1°C
+                batteryInfo["temperature"] = temperature / 10.0
                 batteryInfo["is_charging"] = isCharging == BatteryManager.BATTERY_STATUS_CHARGING
                         || isCharging == BatteryManager.BATTERY_STATUS_FULL
             } else {
@@ -140,5 +154,183 @@ class MainActivity : FlutterActivity() {
             batteryInfo["error"] = e.message
         }
         result.success(batteryInfo)
+    }
+
+    // ========== Device Owner 新方法 ==========
+
+    private fun handleIsDeviceOwner(
+        dpm: DevicePolicyManager,
+        result: MethodChannel.Result
+    ) {
+        result.success(dpm.isDeviceOwnerApp(packageName))
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun handleSetLockTaskPackages(
+        dpm: DevicePolicyManager,
+        componentName: ComponentName,
+        args: Map<String, Any?>,
+        result: MethodChannel.Result
+    ) {
+        if (!dpm.isDeviceOwnerApp(packageName)) {
+            result.error("NOT_DEVICE_OWNER", "需要 Device Owner 权限", null)
+            return
+        }
+        val packages = (args["packages"] as? List<String>) ?: listOf(packageName)
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                dpm.setLockTaskPackages(componentName, packages.toTypedArray())
+                result.success(true)
+            } else {
+                result.error("UNSUPPORTED", "此Android版本不支持锁任务", null)
+            }
+        } catch (e: Exception) {
+            result.error("SET_LOCKTASK_FAILED", e.message, null)
+        }
+    }
+
+    private fun handleIsLockTaskAllowed(
+        dpm: DevicePolicyManager,
+        args: Map<String, Any?>,
+        result: MethodChannel.Result
+    ) {
+        val pkg = args["package"] as? String ?: packageName
+        result.success(dpm.isLockTaskPermitted(pkg))
+    }
+
+    private fun handleSetUninstallBlocked(
+        dpm: DevicePolicyManager,
+        componentName: ComponentName,
+        args: Map<String, Any?>,
+        result: MethodChannel.Result
+    ) {
+        if (!dpm.isDeviceOwnerApp(packageName)) {
+            result.error("NOT_DEVICE_OWNER", "需要 Device Owner 权限", null)
+            return
+        }
+        val blocked = (args["blocked"] as? Boolean) ?: true
+        val pkg = args["package"] as? String ?: packageName
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                dpm.setUninstallBlocked(componentName, pkg, blocked)
+                result.success(true)
+            } else {
+                result.error("UNSUPPORTED", "此Android版本不支持防卸载", null)
+            }
+        } catch (e: Exception) {
+            result.error("SET_UNINSTALL_BLOCKED_FAILED", e.message, null)
+        }
+    }
+
+    private fun handleSetKeyguardDisabled(
+        dpm: DevicePolicyManager,
+        componentName: ComponentName,
+        args: Map<String, Any?>,
+        result: MethodChannel.Result
+    ) {
+        if (!dpm.isDeviceOwnerApp(packageName)) {
+            result.error("NOT_DEVICE_OWNER", "需要 Device Owner 权限", null)
+            return
+        }
+        val disabled = (args["disabled"] as? Boolean) ?: true
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                dpm.setKeyguardDisabled(componentName, disabled)
+                result.success(true)
+            } else {
+                result.error("UNSUPPORTED", "此Android版本不支持", null)
+            }
+        } catch (e: Exception) {
+            result.error("SET_KEYGUARD_FAILED", e.message, null)
+        }
+    }
+
+    private fun handleSetStatusBarDisabled(
+        dpm: DevicePolicyManager,
+        componentName: ComponentName,
+        args: Map<String, Any?>,
+        result: MethodChannel.Result
+    ) {
+        if (!dpm.isDeviceOwnerApp(packageName)) {
+            result.error("NOT_DEVICE_OWNER", "需要 Device Owner 权限", null)
+            return
+        }
+        val disabled = (args["disabled"] as? Boolean) ?: true
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                dpm.setStatusBarDisabled(componentName, disabled)
+                result.success(true)
+            } else {
+                result.error("UNSUPPORTED", "此Android版本不支持", null)
+            }
+        } catch (e: Exception) {
+            result.error("SET_STATUSBAR_FAILED", e.message, null)
+        }
+    }
+
+    private fun handleAddUserRestriction(
+        dpm: DevicePolicyManager,
+        componentName: ComponentName,
+        args: Map<String, Any?>,
+        result: MethodChannel.Result
+    ) {
+        if (!dpm.isDeviceOwnerApp(packageName)) {
+            result.error("NOT_DEVICE_OWNER", "需要 Device Owner 权限", null)
+            return
+        }
+        val restriction = args["restriction"] as? String
+        if (restriction == null) {
+            result.error("MISSING_PARAM", "缺少 restriction 参数", null)
+            return
+        }
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                dpm.addUserRestriction(componentName, restriction)
+                result.success(true)
+            } else {
+                result.error("UNSUPPORTED", "此Android版本不支持", null)
+            }
+        } catch (e: Exception) {
+            result.error("ADD_RESTRICTION_FAILED", e.message, null)
+        }
+    }
+
+    private fun handleClearUserRestriction(
+        dpm: DevicePolicyManager,
+        componentName: ComponentName,
+        args: Map<String, Any?>,
+        result: MethodChannel.Result
+    ) {
+        if (!dpm.isDeviceOwnerApp(packageName)) {
+            result.error("NOT_DEVICE_OWNER", "需要 Device Owner 权限", null)
+            return
+        }
+        val restriction = args["restriction"] as? String
+        if (restriction == null) {
+            result.error("MISSING_PARAM", "缺少 restriction 参数", null)
+            return
+        }
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                dpm.clearUserRestriction(componentName, restriction)
+                result.success(true)
+            } else {
+                result.error("UNSUPPORTED", "此Android版本不支持", null)
+            }
+        } catch (e: Exception) {
+            result.error("REMOVE_RESTRICTION_FAILED", e.message, null)
+        }
+    }
+
+    private fun handleWipeData(
+        dpm: DevicePolicyManager,
+        result: MethodChannel.Result
+    ) {
+        try {
+            dpm.wipeData(0)
+            result.success(true)
+        } catch (e: Exception) {
+            result.error("WIPE_FAILED", e.message, null)
+        }
     }
 }

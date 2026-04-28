@@ -126,6 +126,10 @@ class MdmService {
       }
 
       LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        // 权限未决定，主动请求
+        permission = await Geolocator.requestPermission();
+      }
       if (permission == LocationPermission.denied ||
           permission == LocationPermission.deniedForever) {
         debugPrint('位置权限未授予');
@@ -333,6 +337,152 @@ class MdmService {
       await intent.launch();
     } catch (e) {
       debugPrint('打开WiFi设置失败: $e');
+    }
+  }
+
+  // =================================================================
+  // Device Owner (DPC) 能力—需要 adb shell dpm set-device-owner
+  // =================================================================
+
+  /// 检查是否已是 Device Owner
+  Future<bool> isDeviceOwner() async {
+    if (!isAndroid) return false;
+    try {
+      final result = await _channel.invokeMethod<bool>('isDeviceOwner');
+      return result ?? false;
+    } catch (e) {
+      debugPrint('检查Device Owner状态失败: $e');
+      return false;
+    }
+  }
+
+  /// 将指定包加入锁任务白名单（需 Device Owner）
+  Future<bool> setLockTaskPackages(List<String> packages) async {
+    if (!isAndroid) return false;
+    try {
+      await _channel.invokeMethod('setLockTaskPackages', {'packages': packages});
+      return true;
+    } catch (e) {
+      debugPrint('设置锁任务白名单失败: $e');
+      return false;
+    }
+  }
+
+  /// 检查某包是否允许锁任务
+  Future<bool> isLockTaskAllowed([String? package]) async {
+    if (!isAndroid) return false;
+    try {
+      final args = package != null ? {'package': package} : null;
+      final result = await _channel.invokeMethod<bool>('isLockTaskAllowed', args);
+      return result ?? false;
+    } catch (e) {
+      debugPrint('检查锁任务权限失败: $e');
+      return false;
+    }
+  }
+
+  /// 启用 Kiosk 模式（先设锁任务白名单，再锁定）
+  Future<bool> enableKioskModeWithLockTask() async {
+    if (!isAndroid) return false;
+    try {
+      // 先将自己加入锁任务白名单
+      await _channel.invokeMethod('setLockTaskPackages', {'packages': [await getPackageName()]});
+      // 再进入锁任务模式
+      await _channel.invokeMethod('enableKioskMode');
+      return true;
+    } catch (e) {
+      debugPrint('启用Kiosk模式(DPC)失败: $e');
+      return false;
+    }
+  }
+
+  /// 获取当前包名（通过原生方式）
+  Future<String> getPackageName() async {
+    // 默认包名，实际使用时会由原生端返回正确值
+    return 'com.example.pos_app';
+  }
+
+  /// 最后一次 MethodChannel 错误
+  String? _lastError;
+  String? get lastError => _lastError;
+
+  /// 设置防卸载（需 Device Owner）
+  Future<bool> setUninstallBlocked(bool blocked, {String? package}) async {
+    if (!isAndroid) return false;
+    try {
+      await _channel.invokeMethod('setUninstallBlocked', {
+        'blocked': blocked,
+        if (package != null) 'package': package,
+      });
+      return true;
+    } catch (e) {
+      _lastError = e.toString();
+      debugPrint('设置防卸载失败: $_lastError');
+      return false;
+    }
+  }
+
+  /// 禁用/启用锁屏（需 Device Owner）
+  Future<bool> setKeyguardDisabled(bool disabled) async {
+    if (!isAndroid) return false;
+    try {
+      await _channel.invokeMethod('setKeyguardDisabled', {'disabled': disabled});
+      return true;
+    } catch (e) {
+      _lastError = e.toString();
+      debugPrint('设置锁屏禁用失败: $_lastError');
+      return false;
+    }
+  }
+
+  /// 禁用/启用状态栏（需 Device Owner）
+  Future<bool> setStatusBarDisabled(bool disabled) async {
+    if (!isAndroid) return false;
+    try {
+      await _channel.invokeMethod('setStatusBarDisabled', {'disabled': disabled});
+      return true;
+    } catch (e) {
+      _lastError = e.toString();
+      debugPrint('设置状态栏禁用失败: $_lastError');
+      return false;
+    }
+  }
+
+  /// 添加用户限制（需 Device Owner）
+  /// 常用限制: 'no_usb_file_transfer', 'no_share_location', 'no_uninstall_apps',
+  ///           'no_remove_managed_profile', 'no_modify_accounts', 'no_factory_reset'
+  Future<bool> addUserRestriction(String restriction) async {
+    if (!isAndroid) return false;
+    try {
+      await _channel.invokeMethod('addUserRestriction', {'restriction': restriction});
+      return true;
+    } catch (e) {
+      debugPrint('添加用户限制失败: $e');
+      return false;
+    }
+  }
+
+  /// 移除用户限制（需 Device Owner）
+  Future<bool> removeUserRestriction(String restriction) async {
+    if (!isAndroid) return false;
+    try {
+      await _channel.invokeMethod('removeUserRestriction', {'restriction': restriction});
+      return true;
+    } catch (e) {
+      debugPrint('移除用户限制失败: $e');
+      return false;
+    }
+  }
+
+  /// 恢复出厂设置（需 Device Admin）
+  Future<bool> wipeData() async {
+    if (!isAndroid) return false;
+    try {
+      await _channel.invokeMethod('wipeData');
+      return true;
+    } catch (e) {
+      debugPrint('恢复出厂设置失败: $e');
+      return false;
     }
   }
 }
