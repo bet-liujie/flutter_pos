@@ -28,9 +28,9 @@ Future<Response> _listCommands(RequestContext context, String deviceId) async {
       'command': row[1],
       'params': row[2],
       'status': row[3],
-      'created_at': row[4].toString(),
-      'sent_at': row[5]?.toString(),
-      'done_at': row[6]?.toString(),
+      'created_at': (row[4] as DateTime?)?.toUtc().toIso8601String(),
+      'sent_at': (row[5] as DateTime?)?.toUtc().toIso8601String(),
+      'done_at': (row[6] as DateTime?)?.toUtc().toIso8601String(),
       'error_msg': row[7],
     }).toList();
 

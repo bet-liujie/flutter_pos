@@ -17,6 +17,7 @@ class MdmService {
 
   final DeviceInfoPlugin _deviceInfo = DeviceInfoPlugin();
   static const MethodChannel _channel = MethodChannel('com.example.pos_app/mdm');
+  static const MethodChannel _serviceChannel = MethodChannel('com.example.pos_app/mdm_service');
 
   Timer? _heartbeatTimer;
   String? _deviceId;
@@ -52,10 +53,16 @@ class MdmService {
     // 提前请求位置权限（Activity 前台时），避免心跳定时器触发时弹窗
     await _requestLocationPermission();
 
-    // 启动定时器，每 60 秒上报一次心跳
+    // 启动原生前台保活服务（提升进程优先级，防止被系统杀死）
+    await startForegroundService();
+
+    // 请求忽略电池优化（防止省电策略杀死后台）
+    await requestIgnoreBatteryOptimizations();
+
+    // 启动定时器，每 20 秒上报一次心跳并轮询命令
     _heartbeatTimer?.cancel();
     _heartbeatTimer = Timer.periodic(
-      const Duration(seconds: 60),
+      const Duration(seconds: 20),
       (_) => _reportHeartbeat(),
     );
 
@@ -68,7 +75,84 @@ class MdmService {
     _heartbeatTimer = null;
   }
 
-  /// 执行一次心跳上报
+  // =================================================================
+  // 前台保活服务控制
+  // =================================================================
+
+  /// 启动原生前台保活服务（提升进程优先级）
+  Future<bool> startForegroundService() async {
+    if (!isAndroid) return false;
+    try {
+      await _serviceChannel.invokeMethod('startForegroundService');
+      debugPrint('前台保活服务已启动');
+      return true;
+    } catch (e) {
+      debugPrint('启动前台保活服务失败: $e');
+      return false;
+    }
+  }
+
+  /// 停止前台保活服务
+  Future<bool> stopForegroundService() async {
+    if (!isAndroid) return false;
+    try {
+      await _serviceChannel.invokeMethod('stopForegroundService');
+      debugPrint('前台保活服务已停止');
+      return true;
+    } catch (e) {
+      debugPrint('停止前台保活服务失败: $e');
+      return false;
+    }
+  }
+
+  /// 检查保活服务是否正在运行
+  Future<bool> isForegroundServiceRunning() async {
+    if (!isAndroid) return false;
+    try {
+      final result = await _serviceChannel.invokeMethod<bool>('isServiceRunning');
+      return result ?? false;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  /// 请求忽略电池优化（引导用户到系统设置页面）
+  Future<bool> requestIgnoreBatteryOptimizations() async {
+    if (!isAndroid) return false;
+    try {
+      await _serviceChannel.invokeMethod('requestIgnoreBatteryOptimizations');
+      debugPrint('已请求忽略电池优化');
+      return true;
+    } catch (e) {
+      debugPrint('请求忽略电池优化失败: $e');
+      return false;
+    }
+  }
+
+  /// 获取 CPU WakeLock（防止心跳上报期间 CPU 休眠）
+  Future<bool> acquireWakeLock() async {
+    if (!isAndroid) return false;
+    try {
+      await _serviceChannel.invokeMethod('acquireWakeLock');
+      return true;
+    } catch (e) {
+      debugPrint('获取 WakeLock 失败: $e');
+      return false;
+    }
+  }
+
+  /// 释放 CPU WakeLock
+  Future<bool> releaseWakeLock() async {
+    if (!isAndroid) return false;
+    try {
+      await _serviceChannel.invokeMethod('releaseWakeLock');
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  /// 执行一次心跳上报并轮询待执行命令
   Future<void> _reportHeartbeat() async {
     if (!isAndroid || _deviceId == null) return;
 
@@ -89,8 +173,106 @@ class MdmService {
           'longitude': location['longitude'],
         },
       );
+
+      // 心跳上报成功后轮询待执行命令
+      await _pollCommands();
     } catch (e) {
       debugPrint('心跳上报失败: $e');
+    }
+  }
+
+  /// 轮询待执行命令（GET /devices/[id]/heartbeat）
+  Future<void> _pollCommands() async {
+    if (_deviceId == null) return;
+
+    try {
+      final resp = await _dio.get('/devices/$_deviceId/heartbeat');
+      final data = resp.data['data'] as Map<String, dynamic>?;
+      if (data == null) return;
+
+      final commands = data['commands'] as List<dynamic>? ?? [];
+      for (final cmd in commands) {
+        final cmdId = cmd['id'] as int;
+        final command = cmd['command'] as String? ?? '';
+        final params = cmd['params'] as Map<String, dynamic>? ?? {};
+        debugPrint('拉取到待执行命令: $command (id=$cmdId)');
+
+        try {
+          await _executeCommand(command, params);
+          await _ackCommand(cmdId, 'completed');
+        } catch (e) {
+          debugPrint('命令执行失败: $command - $e');
+          await _ackCommand(cmdId, 'failed', errorMsg: e.toString());
+        }
+      }
+    } catch (e) {
+      debugPrint('命令轮询失败: $e');
+    }
+  }
+
+  /// 执行远程命令（分发到 MethodChannel）
+  Future<void> _executeCommand(String command, Map<String, dynamic> params) async {
+    switch (command) {
+      case 'lock_screen':
+        await _channel.invokeMethod('lockScreen');
+        break;
+      case 'unlock_screen':
+        // Android DevicePolicyManager 不支持远程解锁（需要用户PIN/图案）
+        // 标记为成功但实际依赖用户交互
+        debugPrint('unlock_screen 需要用户交互解锁，无法强制远程解锁');
+        break;
+      case 'reboot':
+        await _channel.invokeMethod('reboot');
+        break;
+      case 'enable_kiosk':
+        // 先尝试设锁任务白名单（DPC 方式），再锁定
+        try {
+          await _channel.invokeMethod('setLockTaskPackages', {
+            'packages': [await getPackageName()],
+          });
+        } catch (_) {}
+        await _channel.invokeMethod('enableKioskMode');
+        break;
+      case 'disable_kiosk':
+        await _channel.invokeMethod('disableKioskMode');
+        break;
+      case 'wipe_data':
+        await _channel.invokeMethod('wipeData');
+        break;
+      case 'disable_camera':
+        await _channel.invokeMethod('setCameraDisabled', {'disabled': true});
+        break;
+      case 'enable_camera':
+        await _channel.invokeMethod('setCameraDisabled', {'disabled': false});
+        break;
+      case 'sync_policy':
+        // 策略同步由心跳 GET 单独返回 policy 字段
+        debugPrint('sync_policy 命令暂不需要额外处理');
+        break;
+      case 'install_app':
+        throw UnsupportedError('install_app 需要在原生层实现');
+      case 'uninstall_app':
+        throw UnsupportedError('uninstall_app 需要在原生层实现');
+      default:
+        throw UnsupportedError('未知命令: $command');
+    }
+  }
+
+  /// 确认命令执行结果
+  Future<void> _ackCommand(int cmdId, String status, {String? errorMsg}) async {
+    if (_deviceId == null) return;
+
+    try {
+      await _dio.post(
+        '/devices/$_deviceId/commands/$cmdId/ack',
+        data: {
+          'status': status,
+          if (errorMsg != null) 'error_msg': errorMsg,
+        },
+      );
+      debugPrint('命令 $cmdId 已确认: $status');
+    } catch (e) {
+      debugPrint('命令确认失败: $e');
     }
   }
 

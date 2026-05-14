@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
@@ -15,6 +16,8 @@ class DeviceDetailPage extends StatefulWidget {
 }
 
 class _DeviceDetailPageState extends State<DeviceDetailPage> {
+  Timer? _refreshTimer;
+
   @override
   void initState() {
     super.initState();
@@ -23,6 +26,20 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
       provider.loadDeviceDetail(widget.deviceId);
       provider.loadCommandHistory(widget.deviceId);
     });
+    // 每 10 秒自动刷新详情和命令历史
+    _refreshTimer = Timer.periodic(const Duration(seconds: 10), (_) {
+      if (mounted) {
+        final provider = context.read<DeviceProvider>();
+        provider.loadDeviceDetail(widget.deviceId);
+        provider.loadCommandHistory(widget.deviceId);
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _refreshTimer?.cancel();
+    super.dispose();
   }
 
   Future<void> _showCommandDialog() async {
@@ -155,6 +172,8 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
                 children: [
                   _buildInfoCard(detail),
                   const SizedBox(height: 16),
+                  _buildHeartbeatCard(detail),
+                  const SizedBox(height: 16),
                   _buildCommandCard(),
                   const SizedBox(height: 16),
                   _buildPolicyCard(detail),
@@ -196,6 +215,41 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
                 detail.lastActiveAt != null
                     ? DateFormat('yyyy-MM-dd HH:mm:ss')
                         .format(detail.lastActiveAt!)
+                    : 'N/A'),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHeartbeatCard(DeviceDetail detail) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Row(
+              children: [
+                Icon(Icons.favorite_border, color: Colors.red),
+                SizedBox(width: 8),
+                Text('心跳状态',
+                    style:
+                        TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+              ],
+            ),
+            const Divider(),
+            _infoRow('最后心跳',
+                detail.lastHeartbeatAt != null
+                    ? DateFormat('yyyy-MM-dd HH:mm:ss')
+                        .format(detail.lastHeartbeatAt!)
+                    : 'N/A'),
+            _infoRow('存储', detail.storageUsage != null ? '${detail.storageUsage!.toStringAsFixed(1)}%' : 'N/A'),
+            _infoRow('内存', detail.memoryUsage != null ? '${detail.memoryUsage!.toStringAsFixed(1)}%' : 'N/A'),
+            _infoRow('网络', detail.networkType ?? 'N/A'),
+            _infoRow('位置',
+                detail.latitude != null && detail.longitude != null
+                    ? '${detail.latitude!.toStringAsFixed(4)}, ${detail.longitude!.toStringAsFixed(4)}'
                     : 'N/A'),
           ],
         ),

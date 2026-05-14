@@ -162,4 +162,121 @@ class ApiService {
       throw Exception(_handleError(e));
     }
   }
+
+  // =================================================================
+  // 策略管理 API
+  // =================================================================
+
+  /// 获取策略列表
+  Future<Map<String, dynamic>> getPolicies({
+    int page = 1,
+    int pageSize = 20,
+  }) async {
+    try {
+      final resp = await dio.get('/policies', queryParameters: {
+        'page': page,
+        'page_size': pageSize,
+      });
+      if (resp.data['success'] == true) {
+        return Map<String, dynamic>.from(resp.data['data']);
+      }
+      throw Exception(resp.data['error'] ?? '获取策略列表失败');
+    } catch (e) {
+      throw Exception(_handleError(e));
+    }
+  }
+
+  /// 获取策略详情
+  Future<Map<String, dynamic>> getPolicyDetail(int policyId) async {
+    try {
+      final resp = await dio.get('/policies/$policyId');
+      if (resp.data['success'] == true) {
+        return Map<String, dynamic>.from(resp.data['data']);
+      }
+      throw Exception(resp.data['error'] ?? '获取策略详情失败');
+    } catch (e) {
+      throw Exception(_handleError(e));
+    }
+  }
+
+  /// 创建策略
+  Future<void> createPolicy({
+    required String policyName,
+    Map<String, dynamic> policyData = const {},
+    bool isActive = true,
+  }) async {
+    try {
+      final resp = await dio.post('/policies', data: {
+        'policy_name': policyName,
+        'policy_data': policyData,
+        'is_active': isActive,
+      });
+      if (resp.data['success'] != true) {
+        throw Exception(resp.data['error'] ?? '创建策略失败');
+      }
+    } catch (e) {
+      throw Exception(_handleError(e));
+    }
+  }
+
+  /// 更新策略
+  Future<void> updatePolicy(int policyId, {
+    String? policyName,
+    Map<String, dynamic>? policyData,
+    bool? isActive,
+  }) async {
+    try {
+      final data = <String, dynamic>{};
+      if (policyName != null) data['policy_name'] = policyName;
+      if (policyData != null) data['policy_data'] = policyData;
+      if (isActive != null) data['is_active'] = isActive;
+
+      final resp = await dio.put('/policies/$policyId', data: data);
+      if (resp.data['success'] != true) {
+        throw Exception(resp.data['error'] ?? '更新策略失败');
+      }
+    } catch (e) {
+      throw Exception(_handleError(e));
+    }
+  }
+
+  /// 删除策略
+  Future<void> deletePolicy(int policyId) async {
+    try {
+      final resp = await dio.delete('/policies/$policyId');
+      if (resp.data['success'] != true) {
+        throw Exception(resp.data['error'] ?? '删除策略失败');
+      }
+    } catch (e) {
+      throw Exception(_handleError(e));
+    }
+  }
+
+  /// 绑定策略到设备
+  Future<void> bindDevices(int policyId, List<String> deviceIds) async {
+    try {
+      final resp = await dio.post('/policies/$policyId/bind', data: {
+        'device_ids': deviceIds,
+      });
+      if (resp.data['success'] != true) {
+        throw Exception(resp.data['error'] ?? '绑定设备失败');
+      }
+    } catch (e) {
+      throw Exception(_handleError(e));
+    }
+  }
+
+  /// 解绑设备
+  Future<void> unbindDevice(int policyId, String deviceId) async {
+    try {
+      final resp = await dio.delete('/policies/$policyId/bind', queryParameters: {
+        'device_id': deviceId,
+      });
+      if (resp.data['success'] != true) {
+        throw Exception(resp.data['error'] ?? '解绑设备失败');
+      }
+    } catch (e) {
+      throw Exception(_handleError(e));
+    }
+  }
 }

@@ -23,6 +23,11 @@ void main() async {
   if (mdmService.isAndroid) {
     final deviceInfo = await mdmService.getDeviceInfo();
     debugPrint('MDM设备信息: $deviceInfo');
+
+    // 始终启动前台保活服务（即使未激活 — 保证设备可远程管理/激活）
+    await mdmService.startForegroundService();
+    await mdmService.requestIgnoreBatteryOptimizations();
+
     // 仅已激活设备启动心跳上报
     if (isActivated) {
       await mdmService.initHeartbeat(baseUrl: 'http://192.168.43.251:8080');

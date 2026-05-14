@@ -18,6 +18,8 @@ Future<Response> _pollDevice(RequestContext context, String deviceId) async {
   final merchantId = context.read<int>();
 
   try {
+    final utcNow = DateTime.now().toUtc().toIso8601String();
+
     // 查询待处理命令
     final commandsResult = await pool.execute(
       "SELECT id, command, params, created_at FROM command_queue WHERE device_id = \$1 AND merchant_id = \$2 AND status = 'pending' ORDER BY created_at ASC LIMIT 10",
@@ -28,14 +30,13 @@ Future<Response> _pollDevice(RequestContext context, String deviceId) async {
       'id': c[0],
       'command': c[1],
       'params': c[2],
-      'created_at': c[3].toString(),
+      'created_at': (c[3] as DateTime?)?.toUtc().toIso8601String(),
     }).toList();
 
     // 标记为已发送
     if (commands.isNotEmpty) {
       final ids = commandsResult.map((c) => c[0] as int).toList();
       // postgres 3.x 不支持 ANY(\$1) 传数组，逐条更新
-      final utcNow = DateTime.now().toUtc().toIso8601String();
       for (final id in ids) {
         await pool.execute(
           "UPDATE command_queue SET status = 'sent', sent_at = \$2 WHERE id = \$1",
@@ -59,9 +60,14 @@ Future<Response> _pollDevice(RequestContext context, String deviceId) async {
         'policy_data': p[2],
         'version': p[3],
       };
+
+      // 标记策略已同步（设备轮询到即视为已下发）
+      await pool.execute(
+        "UPDATE policy_bindings SET status = 'synced', synced_at = \$1 WHERE policy_id = \$2 AND device_id = \$3 AND merchant_id = \$4",
+        parameters: [utcNow, p[0], deviceId, merchantId],
+      );
     }
 
-    final utcNow = DateTime.now().toUtc().toIso8601String();
     return Response.json(body: {
       'success': true,
       'data': {
@@ -106,6 +112,12 @@ Future<Response> _heartbeat(RequestContext context, String deviceId) async {
     // 更新或自动注册设备
     final updateResult = await pool.execute(
       'UPDATE devices SET last_active_at = \$1 WHERE device_id = \$2 AND merchant_id = \$3',
+      parameters: [utcNow, deviceId, merchantId],
+    );
+
+    // 设备重启后会发心跳，自动确认之前下发的 reboot 命令
+    await pool.execute(
+      "UPDATE command_queue SET status = 'completed', done_at = \$1 WHERE device_id = \$2 AND merchant_id = \$3 AND command = 'reboot' AND status = 'sent'",
       parameters: [utcNow, deviceId, merchantId],
     );
 

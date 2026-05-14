@@ -46,7 +46,8 @@ class Device {
 
   static DateTime? _parseDateTime(dynamic value) {
     if (value == null) return null;
-    return DateTime.tryParse(value.toString());
+    final dt = DateTime.tryParse(value.toString());
+    return dt?.toLocal();
   }
 
   static double? _parseDouble(dynamic value) {
@@ -75,6 +76,13 @@ class DeviceDetail {
   final int merchantId;
   final String status;
   final DateTime? lastActiveAt;
+  final DateTime? lastHeartbeatAt;
+  final double? storageUsage;
+  final double? memoryUsage;
+  final String? networkType;
+  final String? appVersion;
+  final double? latitude;
+  final double? longitude;
   final List<PolicyInfo> policies;
   final List<CommandInfo> pendingCommands;
 
@@ -83,6 +91,13 @@ class DeviceDetail {
     required this.merchantId,
     required this.status,
     this.lastActiveAt,
+    this.lastHeartbeatAt,
+    this.storageUsage,
+    this.memoryUsage,
+    this.networkType,
+    this.appVersion,
+    this.latitude,
+    this.longitude,
     this.policies = const [],
     this.pendingCommands = const [],
   });
@@ -94,6 +109,13 @@ class DeviceDetail {
       merchantId: int.tryParse('${data['merchant_id']}') ?? 0,
       status: data['status'] as String? ?? 'unknown',
       lastActiveAt: Device._parseDateTime(data['last_active_at']),
+      lastHeartbeatAt: Device._parseDateTime(data['last_heartbeat_at']),
+      storageUsage: Device._parseDouble(data['storage_usage']),
+      memoryUsage: Device._parseDouble(data['memory_usage']),
+      networkType: data['network_type'] as String?,
+      appVersion: data['app_version'] as String?,
+      latitude: Device._parseDouble(data['latitude']),
+      longitude: Device._parseDouble(data['longitude']),
       policies: (data['policies'] as List?)
               ?.map((e) => PolicyInfo.fromJson(e as Map<String, dynamic>))
               .toList() ??
@@ -109,7 +131,7 @@ class DeviceDetail {
 class PolicyInfo {
   final int id;
   final String policyName;
-  final String policyData;
+  final dynamic policyData;
   final int version;
   final String bindStatus;
 
@@ -125,7 +147,7 @@ class PolicyInfo {
     return PolicyInfo(
       id: json['id'] as int? ?? 0,
       policyName: json['policy_name'] as String? ?? '',
-      policyData: json['policy_data'] as String? ?? '',
+      policyData: json['policy_data'],
       version: json['version'] as int? ?? 1,
       bindStatus: json['bind_status'] as String? ?? 'unknown',
     );

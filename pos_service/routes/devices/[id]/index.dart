@@ -33,6 +33,26 @@ Future<Response> _getDeviceDetail(RequestContext context, String deviceId) async
 
     final row = result[0];
 
+    // 查询最新心跳
+    final heartbeatResult = await pool.execute(
+      'SELECT storage_usage, memory_usage, network_type, app_version, latitude, longitude, reported_at FROM heartbeat_log WHERE device_id = \$1 ORDER BY reported_at DESC LIMIT 1',
+      parameters: [deviceId],
+    );
+
+    Map<String, dynamic>? latestHeartbeat;
+    if (heartbeatResult.isNotEmpty) {
+      final h = heartbeatResult[0];
+      latestHeartbeat = {
+        'storage_usage': h[0],
+        'memory_usage': h[1],
+        'network_type': h[2],
+        'app_version': h[3],
+        'latitude': h[4],
+        'longitude': h[5],
+        'last_heartbeat_at': (h[6] as DateTime?)?.toUtc().toIso8601String(),
+      };
+    }
+
     // 查询绑定的策略
     final policiesResult = await pool.execute(
       'SELECT dp.id, dp.policy_name, dp.policy_data, dp.version, pb.status AS bind_status FROM policy_bindings pb JOIN device_policies dp ON dp.id = pb.policy_id WHERE pb.device_id = \$1 AND pb.merchant_id = \$2',
@@ -58,7 +78,7 @@ Future<Response> _getDeviceDetail(RequestContext context, String deviceId) async
       'command': c[1],
       'params': c[2],
       'status': c[3],
-      'created_at': c[4].toString(),
+      'created_at': (c[4] as DateTime?)?.toUtc().toIso8601String(),
     }).toList();
 
     return Response.json(body: {
@@ -67,9 +87,10 @@ Future<Response> _getDeviceDetail(RequestContext context, String deviceId) async
         'device_id': row[0],
         'merchant_id': row[1],
         'status': row[2],
-        'last_active_at': row[3]?.toString(),
+        'last_active_at': (row[3] as DateTime?)?.toUtc().toIso8601String(),
         'policies': policies,
         'pending_commands': pendingCommands,
+        if (latestHeartbeat != null) ...latestHeartbeat,
       },
     });
   } catch (e) {

@@ -157,7 +157,7 @@ class DeviceProvider extends ChangeNotifier {
   /// 启动自动刷新
   void startAutoRefresh() {
     _autoRefreshTimer?.cancel();
-    _autoRefreshTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+    _autoRefreshTimer = Timer.periodic(const Duration(seconds: 15), (_) {
       loadDevices();
     });
   }

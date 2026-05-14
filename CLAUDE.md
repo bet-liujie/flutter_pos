@@ -16,10 +16,21 @@ The Flutter app includes MDM capabilities that are only active on Android device
 - Screen lock functionality via DevicePolicyManager
 - Kiosk mode (lock task mode) support
 - Quick access to system settings (WiFi, device admin, app settings)
-- Automatic heartbeat reporting (battery, storage, network status every 60s)
+- Automatic heartbeat reporting (storage, memory, network status every 20s)
 - Remote command pull (lock_screen, reboot, enable_kiosk, etc.)
 - Platform-aware UI (MDM features hidden on non-Android platforms)
 - Device Owner (DPC) support via adb (`dpm set-device-owner`): uninstall blocking, keyguard/status bar disable, lock task whitelist, user restrictions, factory reset
+- **Command polling & execution**: heartbeat POST 成功后自动 GET `/devices/[id]/heartbeat` 拉取待执行命令，通过 MethodChannel 执行并 ack 回服务端。支持命令: lock_screen, unlock_screen, reboot, enable_kiosk, disable_kiosk, disable_camera, enable_camera, wipe_data, sync_policy, install_app, uninstall_app
+- **系统级常驻保活**:
+  - `MdmForegroundService` 前台服务（持久通知 + START_STICKY），提升进程优先级，保活时间- 应用层
+  - `BootReceiver` 监听 `BOOT_COMPLETED` 广播，系统启动后自动拉起保活服务和 Flutter 引擎
+  - `WakeLock` 心跳上报期间防止 CPU 休眠，完成后释放
+  - 特权权限：`RECEIVE_BOOT_COMPLETED`, `FOREGROUND_SERVICE`, `WAKE_LOCK`, `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`
+  - `android:persistent="true"`（BSP 系统应用生效），`android:allowBackup="false"`
+  - 即使设备未激活也启动保活服务，保证可远程管理
+- **Android Native 保活组件路径**: `pos_app/android/app/src/main/kotlin/com/example/pos_app/`:
+  - `MdmForegroundService.kt` — 前台保活服务
+  - `BootReceiver.kt` — 开机自启广播接收器
 
 ## Architecture
 
@@ -141,11 +152,20 @@ See `pos_service/api_test.http` for complete examples.
 - `PUT /devices/<id>` - Update device status (active/suspended/lost/retired)
 - `DELETE /devices/<id>` - Unbind device
 - `POST /devices/<id>/heartbeat` - Device heartbeat report (storage, memory, network, GPS location)
-- `GET /devices/<id>/heartbeat` - Poll for pending commands and policy sync
+- `GET /devices/<id>/heartbeat` - Poll for pending commands and policy sync（返回时自动标记策略为 synced）
 - `POST /devices/<id>/commands` - Send remote command (lock_screen, reboot, enable_kiosk, etc.)
 - `GET /devices/<id>/commands` - Query command execution history
 - `POST /devices/<id>/commands/<cmd_id>/ack` - Command acknowledgement (completed/failed)
 - `POST /devices/batch-commands` - Batch send command to multiple devices
+
+### Policy Management
+- `GET /policies` - List policies with pagination
+- `POST /policies` - Create policy (name + JSONB policy_data)
+- `GET /policies/<id>` - Policy detail with bound devices
+- `PUT /policies/<id>` - Update policy (auto-increment version)
+- `DELETE /policies/<id>` - Delete policy (cascade unbind)
+- `POST /policies/<id>/bind` - Bind policy to devices (幂等)
+- `DELETE /policies/<id>/bind?device_id=<id>` - Unbind device from policy
 
 ## Database Schema Notes
 
@@ -179,6 +199,7 @@ Key timestamp columns (heartbeat_log.reported_at, devices.last_active_at, device
 
 ### pos_service Structure
 - `routes/`: File-based routing (Dart Frog convention)
+  - `routes/policies/`: Policy CRUD and device binding (新增)
 - `routes/_middleware.dart`: Global middleware for auth and DB injection
 - `lib/`: Shared models and repositories (currently unused)
 

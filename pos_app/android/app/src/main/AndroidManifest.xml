@@ -14,11 +14,56 @@
     <!-- 位置权限（心跳上报GPS） -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+
+    <!-- ========== 保活与系统级权限 ========== -->
+    <!-- 开机自启 -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <!-- 前台服务 -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <!-- CPU 唤醒锁（心跳上报期间防止 CPU 休眠） -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <!-- 忽略电池优化（防止系统省电策略杀死后台） -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <!-- 允许在其他应用上层显示（Kiosk 模式下弹出提示） -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <!-- 请求系统包安装权限（静默安装/卸载应用） -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <uses-permission android:name="android.permission.INSTALL_PACKAGES" />
+    <uses-permission android:name="android.permission.DELETE_PACKAGES" />
+
     <application
         android:label="pos_app"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
-        android:usesCleartextTraffic="true">
+        android:usesCleartextTraffic="true"
+        android:persistent="true"
+        android:allowBackup="false">
+
+        <!-- ========== 开机自启广播接收器 ========== -->
+        <receiver
+            android:name=".BootReceiver"
+            android:exported="true"
+            android:enabled="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+                <action android:name="com.htc.intent.action.QUICKBOOT_POWERON" />
+            </intent-filter>
+        </receiver>
+
+        <!-- ========== MDM 前台保活服务 ========== -->
+        <!--
+            前台服务类型说明：
+            - specialUse：Android 14+ 要求前台服务声明类型
+            - foregroundServiceType 兼容性：Android 14+ 必填，低版本忽略
+        -->
+        <service
+            android:name=".MdmForegroundService"
+            android:exported="false"
+            android:enabled="true"
+            android:foregroundServiceType="specialUse" />
+
         <activity
             android:name=".MainActivity"
             android:exported="true"

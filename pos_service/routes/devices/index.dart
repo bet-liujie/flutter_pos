@@ -88,14 +88,14 @@ Future<Response> _getDevices(RequestContext context) async {
         'device_id': row[0],
         'merchant_id': row[1],
         'status': row[2],
-        'last_active_at': row[3]?.toString(),
+        'last_active_at': (row[3] as DateTime?)?.toUtc().toIso8601String(),
         'storage_usage': row[4],
         'memory_usage': row[5],
         'network_type': row[6],
         'app_version': row[7],
         'latitude': row[8],
         'longitude': row[9],
-        'last_heartbeat_at': row[10]?.toString(),
+        'last_heartbeat_at': (row[10] as DateTime?)?.toUtc().toIso8601String(),
         'online': isOnline,
       };
     }).toList();
