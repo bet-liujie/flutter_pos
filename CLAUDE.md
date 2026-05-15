@@ -32,6 +32,24 @@ The Flutter app includes MDM capabilities that are only active on Android device
   - `MdmForegroundService.kt` — 前台保活服务
   - `BootReceiver.kt` — 开机自启广播接收器
 
+### 激活页面配网引导
+激活页面 (`activation_page.dart`) 在无网时自动显示配网引导：
+- `_ActivationState.checkingNetwork` → Dio GET `/` 带 `Bearer test-token-123` header 检查连通性
+- 成功 → `fetchingCode` → 获取激活码 → 激活
+- 失败 → `networkSetup`（配网界面）+ 后台每 4 秒重试
+- 用户在系统设置连 WiFi 后回 app → 重制定时器自动检测到服务器并跳转激活
+- 应用内 WiFi 连接：扫描 → 选网 → 密码（加密网络）→ 连接 → `connectingServer` 轮询服务器
+- WiFi 连接底层：`WifiManager.addNetwork()`（全版本优先）→ `WifiNetworkSuggestion`（降级）→ `WifiNetworkSpecifier`（最后手段）
+- 开放网络检测：解析 `capabilities` 字段，不含 WPA/WEP 的不显示密码框
+
+### 设备唯一标识 (device_id)
+`HardwareService.getDeviceId()` 三级降级：
+1. MethodChannel `getAndroidNativeId` → `Settings.Secure.ANDROID_ID`（64bit hex，唯一稳定）
+2. `device_info_plus.androidInfo.id` → `Build.ID`（同 ROM 版本相同，不唯一）
+3. 最终 fallback → `error-fallback-static-device-id`
+
+**已知问题：** 之前 `getAndroidNativeId` 未在 MainActivity.kt 实现，导致所有设备走 fallback，device_id 相同。
+
 ## Architecture
 
 ### Multi-Tenancy Model
@@ -189,6 +207,7 @@ Key timestamp columns (heartbeat_log.reported_at, devices.last_active_at, device
 - `migrations/002_mdm_tables.sql`: MDM tables (device_policies, policy_bindings, command_queue, heartbeat_log)
 - `migrations/003_remove_battery_add_location.sql`: Remove battery fields, add GPS location to heartbeat_log
 - `migrations/004_use_timestamptz.sql`: Change key timestamp columns to timestamptz for correct timezone handling
+- `migrations/005_policy_indexes.sql`: Unique indexes for policy_bindings (policy_id+device_id) and device_policies (merchant_id+policy_name)
 
 ## Code Organization
 

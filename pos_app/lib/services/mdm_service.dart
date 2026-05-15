@@ -152,6 +152,51 @@ class MdmService {
     }
   }
 
+  /// 连接 WiFi（通过原生 WifiManager）
+  Future<bool> connectToWifi(String ssid, String password) async {
+    if (!isAndroid) return false;
+    try {
+      await _serviceChannel.invokeMethod('connectToWifi', {
+        'ssid': ssid,
+        'password': password,
+      });
+      return true;
+    } catch (e) {
+      debugPrint('WiFi 连接失败: $e');
+      return false;
+    }
+  }
+
+  /// 检查 WiFi 开关是否已开启
+  Future<bool> isWifiEnabled() async {
+    if (!isAndroid) return false;
+    try {
+      final result = await _serviceChannel.invokeMethod<bool>('isWifiEnabled');
+      return result ?? false;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  /// 检查 WiFi 是否已连接且有 IP 地址
+  Future<bool> isWifiConnected() async {
+    if (!isAndroid) return false;
+    try {
+      final result = await _serviceChannel.invokeMethod<bool>('isWifiConnected');
+      return result ?? false;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  /// 扫描附近 WiFi 网络
+  Future<List<Map<String, dynamic>>> scanWifiNetworks() async {
+    if (!isAndroid) return [];
+    final result = await _serviceChannel.invokeMethod<List<dynamic>>('scanWifi');
+    if (result == null) return [];
+    return result.map((e) => Map<String, dynamic>.from(e)).toList();
+  }
+
   /// 执行一次心跳上报并轮询待执行命令
   Future<void> _reportHeartbeat() async {
     if (!isAndroid || _deviceId == null) return;
@@ -341,6 +386,22 @@ class MdmService {
       }
     } catch (e) {
       debugPrint('请求位置权限失败: $e');
+    }
+  }
+
+  /// 请求位置权限（配网扫描 WiFi 需要）
+  Future<bool> requestLocationPermission() async {
+    if (!isAndroid) return false;
+    try {
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+      return permission == LocationPermission.always ||
+          permission == LocationPermission.whileInUse;
+    } catch (e) {
+      debugPrint('请求位置权限失败: $e');
+      return false;
     }
   }
 
